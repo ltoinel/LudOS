@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://ludovic.toinel.com/sitemap.xml
