@@ -1,16 +1,19 @@
 {
-  "name": "ludovic-toinel-com",
+  "name": "WebLLMTerminal",
   "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Portail personnel ludovic.toinel.com — Astro + Tailwind CSS.",
+  "description": "WebLLM Shell terminal is a web-based terminal that allows you to interact with a local LLM (Large Language Model) running on your machine. It provides a command-line interface for executing commands and receiving responses from the LLM.",
   "author": "Ludovic Toinel",
   "license": "MIT",
   "homepage": "https://ludovic.toinel.com",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "prepare": "node scripts/ensure-site-config.ts",
     "predev": "node scripts/ensure-site-config.ts",
-    "prebuild": "node scripts/ensure-site-config.ts",
+    "prebuild": "node scripts/ensure-site-config.ts && node scripts/keep-assets.ts stash",
     "precheck": "node scripts/ensure-site-config.ts",
     "pretest": "node scripts/ensure-site-config.ts",
     "dev": "astro dev",
@@ -26,10 +29,16 @@
     "format:check": "prettier --check .",
     "astro": "astro",
     "upgrade": "ncu",
-    "upgrade:apply": "ncu -u && npm install && npm run build"
+    "upgrade:apply": "ncu -u && npm install && npm run build",
+    "msg-server": "node server/msg-server.ts",
+    "coverage": "vitest run --coverage && node scripts/update-badges.ts",
+    "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml",
+    "deploy:config": "node scripts/deploy-config.ts",
+    "postbuild": "node scripts/keep-assets.ts restore"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.0",
+    "@mlc-ai/web-llm": "^0.2.85",
     "@tailwindcss/vite": "^4.1.0",
     "astro": "^5.8.0",
     "astro-icon": "^1.1.5",
@@ -38,6 +47,8 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
     "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.4",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.4.1",
     "eslint-plugin-astro": "^1.7.0",
     "globals": "^17.6.0",
@@ -46,6 +57,7 @@
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.60.1",
+    "vite": "^6.4.3",
     "vitest": "^4.1.8"
   }
 }

@@ -1,6 +1,7 @@
 ---
 name: exit
 desc: close the session
+page: false
 man: |
   # EXIT(1)
 

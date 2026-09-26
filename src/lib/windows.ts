@@ -88,9 +88,15 @@ export function makeWindowChrome(win: HTMLElement, onClose: () => void): void {
   bar.addEventListener('pointerup', endDrag);
   bar.addEventListener('pointercancel', endDrag);
 
-  // Keep a moved window within the viewport when the browser is resized.
-  window.addEventListener('resize', () => {
-    if (!win.isConnected || win.classList.contains('maximized') || !win.style.left) return;
+  // Keep a moved window within the viewport when the browser is resized. The
+  // listener detaches itself once the window has been removed from the page,
+  // so closed windows don't pile up global handlers.
+  window.addEventListener('resize', function onResize() {
+    if (!win.isConnected) {
+      window.removeEventListener('resize', onResize);
+      return;
+    }
+    if (win.classList.contains('maximized') || !win.style.left) return;
     const [x, y] = clamp(parseFloat(win.style.left), parseFloat(win.style.top));
     win.style.left = `${x}px`;
     win.style.top = `${y}px`;
@@ -163,18 +169,18 @@ export function spawnIframe(rawUrl: string): string | null {
 
   const win = document.createElement('section');
   win.className = 'ssh-win iframe-win';
-  win.setAttribute('aria-label', `Page web — ${url.hostname}`);
+  win.setAttribute('aria-label', `Web page — ${url.hostname}`);
   // The chrome is static, trusted markup; the URL is injected via DOM
   // properties below (never string-interpolated) so it can't break out.
   win.innerHTML = `
     <header class="ssh-bar">
       <span class="ssh-dots">
-        <button type="button" class="ssh-ctl" data-act="close" style="background:#ff5f56" aria-label="Fermer"></button>
-        <button type="button" class="ssh-ctl" data-act="min" style="background:var(--amber)" aria-label="Réduire"></button>
-        <button type="button" class="ssh-ctl" data-act="max" style="background:var(--green)" aria-label="Agrandir / restaurer"></button>
+        <button type="button" class="ssh-ctl" data-act="close" style="background:#ff5f56" aria-label="Close"></button>
+        <button type="button" class="ssh-ctl" data-act="min" style="background:var(--amber)" aria-label="Minimize"></button>
+        <button type="button" class="ssh-ctl" data-act="max" style="background:var(--green)" aria-label="Maximize / restore"></button>
       </span>
       <span class="ssh-title"></span>
-      <a class="ssh-status iframe-open" target="_blank" rel="noopener noreferrer">↗ ouvrir</a>
+      <a class="ssh-status iframe-open" target="_blank" rel="noopener noreferrer">↗ open</a>
     </header>
     <div class="ssh-body iframe-body">
       <iframe class="iframe-frame" referrerpolicy="no-referrer" loading="lazy"

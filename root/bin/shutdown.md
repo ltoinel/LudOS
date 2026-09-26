@@ -2,6 +2,7 @@
 name: shutdown
 desc: power off — closes this shell window (alias: reboot)
 alias: reboot
+page: false
 man: |
   # SHUTDOWN(1)
 

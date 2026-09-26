@@ -1,6 +1,7 @@
 ---
 name: open
 desc: open a link — e.g. open github
+index: false
 man: |
   # OPEN(1)
 

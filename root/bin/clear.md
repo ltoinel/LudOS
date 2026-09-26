@@ -2,6 +2,7 @@
 name: clear
 desc: clear the screen
 alias: cls
+page: false
 man: |
   # CLEAR(1)
 

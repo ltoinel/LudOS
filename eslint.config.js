@@ -4,7 +4,20 @@ import astro from 'eslint-plugin-astro';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/', '.astro/', 'node_modules/', 'root/', 'public/', 'vendor/'] },
+  {
+    // Generated output and archives, plus content linted separately (root/).
+    ignores: [
+      'dist/',
+      '.astro/',
+      '.assets-archive/',
+      'coverage/',
+      'reports/',
+      'deploy/generated/',
+      'node_modules/',
+      'root/',
+      'public/',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...astro.configs.recommended,
@@ -13,9 +26,9 @@ export default [
     files: ['src/**/*.{ts,astro}'],
     languageOptions: { globals: { ...globals.browser } },
   },
-  // Node code: build scripts, config and tests.
+  // Node code: build scripts, the msg relay, config and tests.
   {
-    files: ['scripts/**/*.ts', '*.{js,ts,mjs}', 'tests/**/*.ts'],
+    files: ['scripts/**/*.ts', 'server/**/*.ts', '*.{js,ts,mjs}', 'tests/**/*.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
 ];

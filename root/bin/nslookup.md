@@ -1,6 +1,7 @@
 ---
 name: nslookup
 desc: DNS lookup — e.g. nslookup toinel.com
+demo: nslookup %HOST%
 man: |
   # NSLOOKUP(1)
 
@@ -14,6 +15,22 @@ man: |
   Resolves a domain name over DNS-over-HTTPS (Google Public DNS). The
   record type defaults to A; the A, AAAA, NS, CNAME, MX and TXT types
   are recognized. Each answer shows its value and TTL.
+
+  ## HOW IT WORKS
+  Browsers cannot send raw DNS packets, so the lookup goes through
+  DNS-over-HTTPS: an HTTPS request to Google Public DNS (dns.google), which
+  resolves the name and returns the answer as JSON. The result is what a
+  public resolver sees, not your local or corporate resolver.
+
+  ## USE CASES
+  - check where a domain points (A / AAAA) after a DNS change;
+  - find the mail servers of a domain (MX) and their priorities;
+  - read TXT records: SPF, DKIM, DMARC, domain-verification tokens;
+  - see the authoritative name servers (NS) or a CNAME alias chain.
+
+  ## NOTES
+  The TTL tells how long resolvers may cache the answer: after changing a
+  record, expect up to that many seconds before everyone sees the new value.
 
   ## EXAMPLES
   nslookup toinel.com

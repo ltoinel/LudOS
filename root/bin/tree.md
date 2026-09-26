@@ -1,6 +1,7 @@
 ---
 name: tree
 desc: list the filesystem as a tree — e.g. tree, tree /
+index: false
 man: |
   # TREE(1)
 

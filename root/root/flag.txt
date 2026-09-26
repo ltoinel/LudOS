@@ -1,8 +1,8 @@
-🏴‍☠️  Tu es root sur LudOs.
+🏴‍☠️  You are root on LudOs.
 
-Pas de secret ici.
-Si tu lis ces lignes, c'est que tu sais ce qu'est un `su`. Respect.
+No secrets here.
+If you are reading these lines, you know what `su` is. Respect.
 
-Reviens à toi avec `exit`.
+Get back to yourself with `exit`.
 
 — ludovic@toinel.com

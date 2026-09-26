@@ -46,8 +46,6 @@ js: |
   // against this machine's WebGPU limits and approximate RAM. Estimate only —
   // browsers do not expose total VRAM.
   const E = ctx.escape;
-  const WEBLLM_VERSION = '0.2.84';
-  const WEBLLM_URL = '/vendor/web-llm-' + WEBLLM_VERSION + '.js';
   const showAll = ctx.args.includes('--all') || ctx.args.includes('-a');
 
   // ---- machine probe (the parts available without WebGPU) ----
@@ -69,7 +67,7 @@ js: |
     return;
   }
   let adapter = null;
-  try { adapter = await navigator.gpu.requestAdapter(); } catch (e) { /* none */ }
+  try { adapter = await navigator.gpu.requestAdapter(); } catch { /* none */ }
   if (!adapter) {
     ctx.line('Hardware');
     ctx.line('  WebGPU.........: present, but no usable GPU adapter');
@@ -87,7 +85,7 @@ js: |
   let info = {};
   try {
     info = adapter.info || (typeof adapter.requestAdapterInfo === 'function' ? await adapter.requestAdapterInfo() : {}) || {};
-  } catch (e) { /* adapter info is best-effort */ }
+  } catch { /* adapter info is best-effort */ }
 
   // Estimated memory budget for the model (weights + KV cache). Browsers don't
   // expose total VRAM; derive it from system RAM with headroom, falling back to
@@ -96,15 +94,14 @@ js: |
 
   // ---- load the catalogue ----
   ctx.line('loading the model catalogue…');
-  let wl;
+  // Through the central LLM module (src/lib/llm.ts), the only WebLLM loader.
+  let records;
   try {
-    wl = await import(WEBLLM_URL);
+    records = await ctx.llm.catalog();
   } catch (e) {
     ctx.error('webllmfit: could not load the engine — ' + (e.message || e.name));
-    ctx.line('Expected the bundle at ' + WEBLLM_URL + ' (served from this site).');
     return;
   }
-  const records = (wl.prebuiltAppConfig && wl.prebuiltAppConfig.model_list) || [];
 
   // ---- de-duplicate quant variants, keep the build best suited to this GPU ----
   const baseKey = (id) => id.replace(/-q\d+f\d+(_\d+)?/i, '##');

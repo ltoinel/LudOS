@@ -48,10 +48,15 @@ export const site = {
   ],
 
   /* ----------------------------- site & SEO --------------------------- */
-  /** Canonical origin (no trailing slash). */
+  /** Canonical origin (no trailing slash) — the one place the domain is set. */
   url: 'https://example.com',
-  locale: 'fr_FR',
-  lang: 'fr',
+  /** Source repository of this portal — the dock's "fork me on GitHub" button
+   *  (empty string to hide it). */
+  sourceUrl: 'https://github.com/ltoinel/Terminal.com',
+  /** Short name of the installable web app (PWA manifest `short_name`). */
+  shortName: 'johndoe',
+  locale: 'en_US',
+  lang: 'en',
   /** Absolute-from-root path of the portrait / Open Graph image. */
   ogImage: '/portrait.jpg',
   /** Twitter / X handle (with `@`). */
@@ -61,8 +66,9 @@ export const site = {
 
   /* --------------------------- interactive shell ---------------------- */
   shell: {
-    /** Host shown in the prompt and SSH animation. */
-    host: 'example.com',
+    // The host shown in the prompt is not configured: it is the host name of
+    // `url` (see `siteHost` below), or at runtime the domain actually serving
+    // the page.
     /** User shown in the prompt. */
     user: 'guest',
     /** Absolute home directory — must match the `root/home/...` tree. */
@@ -88,6 +94,13 @@ export const openLinks: Record<string, string> = (() => {
   }
   return out;
 })();
+
+/**
+ * Public host name, derived from `url` (e.g. `example.com`): the shell prompt,
+ * the fake `/etc/hostname`, the email relay defaults and the deploy configs
+ * all use it, so changing the domain only means changing `url`.
+ */
+export const siteHost: string = new URL(site.url).hostname;
 
 /** schema.org `sameAs` list: every profile flagged `sameAs` in the link list. */
 export const sameAs: string[] = site.links.filter((l) => l.sameAs).map((l) => l.url);

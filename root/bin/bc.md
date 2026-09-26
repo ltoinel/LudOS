@@ -2,6 +2,7 @@
 name: bc
 desc: basic calculator — e.g. bc "2 + 2 * 3", bc "sqrt(2)"
 alias: calc
+demo: bc "2^10 + sqrt(144) * pi"
 man: |
   # BC(1)
 
@@ -24,6 +25,15 @@ man: |
 
   The expression is parsed and evaluated by a small built-in parser — never by
   eval() — so untrusted input cannot run code.
+
+  ## USE CASES
+  - quick arithmetic without leaving the terminal: bc "19.99 * 3 * 1.2";
+  - scientific functions and constants: bc "sin(pi / 6)", bc "ln(e^2)";
+  - pipe calculations in: echo "2^32" | bc.
+
+  ## NOTES
+  Numbers are double-precision floats, as in JavaScript: results carry about
+  15 significant digits, unlike the arbitrary precision of the Unix bc.
 
   ## EXAMPLES
   bc "2 + 2 * 3"

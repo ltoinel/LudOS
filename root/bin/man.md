@@ -1,6 +1,7 @@
 ---
 name: man
 desc: show a command manual — e.g. man ls
+page: false
 man: |
   # MAN(1)
 

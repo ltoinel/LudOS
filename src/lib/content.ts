@@ -15,14 +15,12 @@ import { statSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { validateCommands } from './commands.ts';
 import type { CmdDef } from './commands.ts';
-import { site } from '../site.config.ts';
+import { escapeHtml, isSafeHref } from './html.ts';
+import type { VDir, VFile, VNode } from './vfs.ts';
+import { site, siteHost } from '../site.config.ts';
+import pkg from '../../package.json';
 
-export type { CmdDef };
-
-/** A node in the virtual filesystem (mirrors the on-disk `root/` tree). */
-export type VFile = { type: 'file'; content: string };
-export type VDir = { type: 'dir'; children: Record<string, VNode> };
-export type VNode = VFile | VDir;
+export type { CmdDef, VDir, VFile, VNode };
 
 // Walk the whole `root/` tree once. `exhaustive` includes dotfiles (.bashrc, …);
 // `?raw` gives each file's text content.
@@ -36,6 +34,19 @@ const rawEntries = Object.entries(
   // Strip everything up to the FIRST `root/` (lazy: the project root dir, even when
   // a child is itself named `root`, e.g. `/root/`).
 ).map(([path, raw]) => [path.replace(/^.*?\/root\//, ''), raw as string] as [string, string]);
+
+/**
+ * Build-time variables usable in any `root/` file, so decor files never
+ * hard-code site-specific values: `%HOST%` (e.g. `example.com`), `%URL%`
+ * (`https://example.com`) and `%VERSION%` (the package.json release).
+ */
+const TEMPLATE_VARS: Record<string, string> = {
+  '%HOST%': siteHost,
+  '%URL%': site.url,
+  '%VERSION%': pkg.version,
+};
+const fillTemplate = (text: string): string =>
+  text.replace(/%(HOST|URL|VERSION)%/g, (key) => TEMPLATE_VARS[key]);
 
 /** The whole fake filesystem as a nested tree (injected as `#shell-fs`). */
 export const tree: VDir = (() => {
@@ -65,7 +76,7 @@ export const tree: VDir = (() => {
     if (isBin) name = name.replace(/\.md$/, '');
     dir.children[name] = {
       type: 'file',
-      content: isBin ? `${name} — commande du shell. Voir: man ${name}\n` : content,
+      content: isBin ? `${name} — shell command. See: man ${name}\n` : fillTemplate(content),
     };
   }
   return root;
@@ -153,15 +164,15 @@ function metaFromMarkdown(md: string, slug: string): { title: string; desc: stri
   return { title, desc: desc || `document ${slug}` };
 }
 
-const escapeHtml = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 // Inline markdown -> HTML, applied to already-escaped text. Links first so a `*`
 // or backtick inside a URL can't be mistaken for emphasis/code; then code, then
-// bold before italic (so `**x**` isn't eaten by the single-`*` rule).
+// bold before italic (so `**x**` isn't eaten by the single-`*` rule). A link
+// with an unsafe scheme (`javascript:`, …) keeps only its text.
 const inlineMd = (s: string): string =>
   escapeHtml(s)
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) =>
+      isSafeHref(url) ? `<a href="${url}" rel="noopener">${text}</a>` : text,
+    )
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
@@ -246,37 +257,6 @@ export function manMetaDescription(md: string): string {
   return text.length > META_DESC_MAX ? `${text.slice(0, META_DESC_MAX - 1).trimEnd()}…` : text;
 }
 
-/**
- * Commands that don't make good standalone landing pages (control / need args).
- * Aliases never produce a route on their own — `routes` is derived from the
- * command definitions, and an alias is just an extra name on an existing one.
- */
-const NO_LINK = new Set([
-  'clear',
-  'exit',
-  'boot',
-  'shutdown',
-  'll',
-  'echo',
-  'cat',
-  'cd',
-  'su',
-  'history',
-  'theme',
-  // Argument-required utilities: a standalone page would only show "usage: …".
-  'base64',
-  'sha256sum',
-  'man',
-  'find',
-  'grep',
-  'wc',
-  'touch',
-  'mkdir',
-  'rm',
-  // Side effect (sends an SMS) + needs an argument — never a landing page.
-  'msg',
-]);
-
 export interface Route {
   /** URL slug, also the command/document run on load (e.g. `whoami`, `about`). */
   slug: string;
@@ -289,13 +269,20 @@ export interface Route {
    * no `body` — their crawlable mirror is derived from the `man` page instead.
    */
   body?: string;
+  /** Kept out of search engines (`noindex`, not in the sitemap). */
+  noindex?: boolean;
 }
 
 /** Deep-linkable routes: content commands + home documents (one page each). */
 export const routes: Route[] = [
   ...commandDefs
-    .filter((c) => !NO_LINK.has(c.name))
-    .map((c) => ({ slug: c.name, title: c.name, desc: c.desc || `commande ${c.name}` })),
+    .filter((c) => c.page !== false) // opted out via `page: false` in the frontmatter
+    .map((c) => ({
+      slug: c.name,
+      title: c.name,
+      desc: c.desc || `command ${c.name}`,
+      noindex: c.index === false, // thin page: reachable, but not indexed
+    })),
   ...homeDocs.map(({ name, content }) => {
     const slug = name.replace(/\.md$/, '');
     return { slug, ...metaFromMarkdown(content, slug), body: manToHtml(content) };
@@ -320,6 +307,9 @@ export function lastmod(slug: string): string | null {
   }
   return null;
 }
+
+/** The routes search engines should see (sitemap, internal link mesh). */
+export const indexedRoutes: Route[] = routes.filter((r) => !r.noindex);
 
 /** Most recent `lastmod` across every route — the home page's effective date. */
 export function latestLastmod(): string | null {

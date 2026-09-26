@@ -12,13 +12,16 @@
  * renders from it. By default NO model is loaded; `ensureModel` asks for consent
  * before the first download.
  *
- * The engine module (`/vendor/web-llm-<version>.js`) is self-hosted and loaded
- * with a `@vite-ignore` dynamic import so Vite never bundles the 6 MB file.
- * UI strings here stay French (terminal-facing); code/comments are English.
+ * The engine is the `@mlc-ai/web-llm` npm package, loaded through a dynamic
+ * `import()` so Vite code-splits it into its own lazy chunk: the ~6 MB module is
+ * only fetched the first time a command needs a model (or the catalogue).
  */
 
-export const WEBLLM_VERSION = '0.2.84';
-const WEBLLM_URL = `/vendor/web-llm-${WEBLLM_VERSION}.js`;
+/**
+ * Installed `@mlc-ai/web-llm` version, shown by `llm` and the widget. Kept in
+ * sync with package.json by `tests/llm.test.ts`.
+ */
+export const WEBLLM_VERSION = '0.2.85';
 
 /** A curated, browser-friendly chat model. `base` is the id up to the quant suffix. */
 export interface RecModel {
@@ -61,9 +64,18 @@ interface Engine {
   unload: () => Promise<void>;
 }
 
-/** Minimal shape of the self-hosted WebLLM module (`/vendor/web-llm-*.js`). */
+/** Minimal shape of the `@mlc-ai/web-llm` module — only what the manager uses. */
+/** One entry of WebLLM's prebuilt model catalogue (only the fields we read). */
+export interface CatalogRecord {
+  model_id: string;
+  vram_required_MB?: number;
+  low_resource_required?: boolean;
+  required_features?: string[];
+  overrides?: { context_window_size?: number };
+}
+
 interface WebllmModule {
-  prebuiltAppConfig?: { model_list?: { model_id: string }[] };
+  prebuiltAppConfig?: { model_list?: CatalogRecord[] };
   CreateMLCEngine: (
     model: string,
     opts: { initProgressCallback?: (r: { progress?: number; text?: string }) => void },
@@ -197,11 +209,29 @@ function emit(): void {
   });
 }
 
+/** Clears the loaded-model fields of the slot (engine, identity, progress, tokens). */
+function resetSlot(): void {
+  slot.engine = null;
+  slot.modelId = null;
+  slot.label = null;
+  slot.loading = false;
+  slot.progress = 0;
+  slot.progressText = '';
+  slot.tokensIn = 0;
+  slot.tokensOut = 0;
+}
+
 /* --------------------------- engine plumbing -------------------------- */
 
 let webllmMod: Promise<WebllmModule> | null = null;
 function loadWebllm(): Promise<WebllmModule> {
-  if (!webllmMod) webllmMod = import(/* @vite-ignore */ WEBLLM_URL) as Promise<WebllmModule>;
+  if (!webllmMod) {
+    // Cast through our minimal interface: the package's own typings are far
+    // wider than the few members used here.
+    webllmMod = import('@mlc-ai/web-llm') as unknown as Promise<WebllmModule>;
+    // A failed chunk load (offline, deploy mid-session) must not stick forever.
+    webllmMod.catch(() => (webllmMod = null));
+  }
   return webllmMod;
 }
 
@@ -241,13 +271,18 @@ async function resolveModelId(wl: WebllmModule, want: string): Promise<string> {
     return (
       hits.find((id) => id.includes(quant)) || hits.find((id) => id.includes('q4f32')) || hits[0]
     );
-  throw new Error(`modèle introuvable : ${want}`);
+  throw new Error(`model not found: ${want}`);
 }
 
 /** Every known model id (no WebGPU needed). */
 export async function llmModels(): Promise<string[]> {
+  return (await llmCatalog()).map((m) => m.model_id);
+}
+
+/** The full prebuilt catalogue (ids + VRAM / feature requirements), e.g. for `webllmfit`. */
+export async function llmCatalog(): Promise<CatalogRecord[]> {
   const wl = await loadWebllm();
-  return (wl.prebuiltAppConfig?.model_list || []).map((m) => m.model_id);
+  return wl.prebuiltAppConfig?.model_list || [];
 }
 
 /** The recommended list resolved to concrete ids + sizes for this GPU. */
@@ -295,9 +330,8 @@ async function resolveCached(arg: string): Promise<string> {
   if (cached.includes(arg)) return arg;
   const hits = cached.filter((id) => id.toLowerCase().includes(arg.toLowerCase()));
   if (hits.length === 1) return hits[0];
-  if (hits.length > 1)
-    throw new Error(`ambigu — ${hits.length} modèles correspondent à « ${arg} »`);
-  throw new Error(`aucun modèle en cache ne correspond à « ${arg} »`);
+  if (hits.length > 1) throw new Error(`ambiguous — ${hits.length} models match "${arg}"`);
+  throw new Error(`no cached model matches "${arg}"`);
 }
 
 /** Delete one cached model (id or unique substring). Returns the id removed. */
@@ -337,14 +371,7 @@ export async function unloadModel(): Promise<boolean> {
   } catch {
     /* ignore */
   }
-  slot.engine = null;
-  slot.modelId = null;
-  slot.label = null;
-  slot.tokensIn = 0;
-  slot.tokensOut = 0;
-  slot.loading = false;
-  slot.progress = 0;
-  slot.progressText = '';
+  resetSlot();
   emit();
   return true;
 }
@@ -362,7 +389,7 @@ export async function ensureModel(opts: EnsureOptions): Promise<Session | null> 
   }
   const wl = await loadWebllm();
   const want = opts.model || opts.base;
-  if (!want) throw new Error('ensureModel: aucun modèle demandé (model/base manquant).');
+  if (!want) throw new Error('ensureModel: no model requested (model/base missing).');
   const modelId = await resolveModelId(wl, want);
   const label = opts.label || modelId;
 
@@ -385,21 +412,16 @@ export async function ensureModel(opts: EnsureOptions): Promise<Session | null> 
     } catch {
       /* ignore */
     }
-    slot.engine = null;
-    slot.modelId = null;
   }
-
+  resetSlot();
   slot.loading = true;
-  slot.progress = 0;
-  slot.progressText = '';
   slot.label = label;
   slot.modelId = modelId;
-  slot.tokensIn = 0;
-  slot.tokensOut = 0;
   emit();
 
-  try {
-    const engine = await wl.CreateMLCEngine(modelId, {
+  /** Creates the engine for `id`, mirroring its download progress into the slot. */
+  const load = async (id: string): Promise<Session> => {
+    const engine = await wl.CreateMLCEngine(id, {
       initProgressCallback: (r) => {
         slot.progress = r.progress || 0;
         slot.progressText = r.text || '';
@@ -408,39 +430,29 @@ export async function ensureModel(opts: EnsureOptions): Promise<Session | null> 
       },
     });
     slot.engine = engine;
+    slot.modelId = id;
     slot.loading = false;
     slot.progress = 1;
     emit();
-    return { modelId, label, chat: llmChat };
+    return { modelId: id, label, chat: llmChat };
+  };
+
+  try {
+    return await load(modelId);
   } catch (e) {
     // Some GPUs advertise shader-f16 but fail to compile f16 shaders — retry q4f32.
     const msg = String((e as Error)?.message || e);
     const shaderIssue =
       /ShaderModule|shader-f16|f16|compute stage|createShaderModule|previous error/i.test(msg);
     const f32 = modelId.replace(/q4f16/g, 'q4f32');
-    if (shaderIssue && /q4f16/.test(modelId) && f32 !== modelId) {
+    if (shaderIssue && f32 !== modelId) {
       try {
-        const engine = await wl.CreateMLCEngine(f32, {
-          initProgressCallback: (r) => {
-            slot.progress = r.progress || 0;
-            slot.progressText = r.text || '';
-            emit();
-            opts.onProgress?.({ progress: slot.progress, text: slot.progressText });
-          },
-        });
-        slot.engine = engine;
-        slot.modelId = f32;
-        slot.loading = false;
-        slot.progress = 1;
-        emit();
-        return { modelId: f32, label, chat: llmChat };
+        return await load(f32);
       } catch {
         /* fall through to the reset below */
       }
     }
-    slot.loading = false;
-    slot.modelId = null;
-    slot.label = null;
+    resetSlot();
     emit();
     throw e;
   }
@@ -453,7 +465,7 @@ function isStream(x: ChatResponse | AsyncIterable<ChatResponse>): x is AsyncIter
 
 /** Runs a generation through the resident engine, tallying in/out tokens. */
 export async function llmChat(req: ChatRequest): Promise<ChatResult> {
-  if (!slot.engine) throw new Error("aucun modèle chargé — charge-en un d'abord.");
+  if (!slot.engine) throw new Error('no model loaded — load one first.');
   const stream = req.stream !== false;
   const body: Record<string, unknown> = {
     messages: req.messages,

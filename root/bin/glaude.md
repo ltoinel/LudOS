@@ -1,13 +1,13 @@
 ---
 name: glaude
-desc: fabrique des sites web hideux et flashy avec un LLM local (WebGPU) — façon Claude Code, par "le Glaude"
+desc: builds hideous, flashy websites with a local LLM (WebGPU) — Claude Code style, by "le Glaude"
 alias: soupe
 man: |
   # GLAUDE(1)
 
   ## NAME
-  glaude — un atelier de création de sites web (volontairement laids et
-  flashy) façon Claude Code, incarné par "le Glaude" du film *La Soupe aux Choux*
+  glaude — a workshop for (deliberately ugly and flashy) websites, Claude Code
+  style, starring "le Glaude" from the French film *La Soupe aux Choux*
 
   ## SYNOPSIS
   glaude
@@ -17,44 +17,43 @@ man: |
   glaude --unload
 
   ## DESCRIPTION
-  glaude est un clin d'œil à Claude Code : l'allure (bannière, boîte d'accueil,
-  invite ›) mais piloté par un LLM de *coding* open-source qui tourne
-  entièrement dans le navigateur — aucun serveur, aucun appel réseau pour
-  l'inférence. Le moteur (chargement, cache, GPU) est géré par le module LLM
-  central (voir `llm` et le widget en haut à droite) ; glaude partage le modèle
-  résident avec miaougpt et denree.
+  glaude is a nod to Claude Code: the look (banner, welcome box, › prompt),
+  but driven by an open-source *coding* LLM running entirely in your browser —
+  no server, no network call for inference. The engine (loading, cache, GPU)
+  is handled by the central LLM module (see `llm` and the widget in the
+  top-right corner); glaude shares the resident model with miaougpt and denree.
 
-  Sa spécialité : pondre des **sites HTML horriblement laids et flashy** —
-  fonds fluo, dégradés arc-en-ciel, Comic Sans, <marquee> qui défilent, texte
-  qui clignote, emojis partout. Bref, l'esthétique GeoCities de 1997.
+  Its specialty: churning out **horribly ugly, flashy HTML sites** — neon
+  backgrounds, rainbow gradients, Comic Sans, scrolling <marquee>, blinking
+  text, emojis everywhere. In short, the GeoCities look of 1997.
 
-  Par défaut aucun modèle n'est chargé : glaude te propose un modèle de code et
-  te demande de confirmer son téléchargement (sauf si un modèle est déjà chaud).
+  By default no model is loaded: glaude suggests a coding model and asks you
+  to confirm its download (unless a model is already warm).
 
-  Au lancement, glaude affiche "la Denrée" (l'extraterrestre du film) en ASCII
-  art, puis — comme Claude Code amorce un projet — il **propose un nom de
-  projet et son emplacement** dans ton système de fichiers
-  (/home/guest/<projet>). Tu valides, glaude crée le dossier, y écrit un
-  index.html de départ (bien moche) et s'y place.
+  On launch, glaude shows "la Denrée" (the film's alien) in ASCII art, then —
+  just like Claude Code bootstraps a project — it **suggests a project name
+  and location** in your filesystem (/home/guest/<project>). Once you accept,
+  glaude creates the folder, writes a (very ugly) starter index.html in it and
+  moves there.
 
-  Décris ensuite la page voulue : le Glaude répond avec un document HTML
-  complet. /save l'écrit dans le projet (persisté dans le navigateur), et
-  /show ouvre un faux navigateur pour admirer le carnage.
+  Then describe the page you want: le Glaude answers with a complete HTML
+  document. /save writes it to the project (persisted in the browser), and
+  /show opens a fake browser to admire the carnage.
 
   ## OPTIONS
-  --list, -l        liste les modèles de code conseillés
-  --unload, --stop  libère le modèle chargé de la mémoire GPU
+  --list, -l        list the recommended coding models
+  --unload, --stop  free the loaded model from GPU memory
 
   ## CHAT COMMANDS
-  /show [fichier]   ouvre un faux navigateur sur le rendu (défaut index.html)
-  /save [fichier]   écrit la dernière page générée dans le projet
-  /download /zip    télécharge tout le projet dans une archive .zip
-  /files /ls        liste les fichiers du projet
-  /project /pwd     rappelle le projet et son chemin
-  /reset /clear     oublie le contexte (garde le projet et le modèle)
-  /model            affiche le modèle chargé
-  /exit /quit /bye  ferme la session
-  /help             liste ces commandes
+  /show [file]      open a fake browser on the result (default index.html)
+  /save [file]      write the last generated page to the project
+  /download /zip    download the whole project as a .zip archive
+  /files /ls        list the project files
+  /project /pwd     show the project and its path
+  /reset /clear     forget the context (keeps the project and the model)
+  /model            show the loaded model
+  /exit /quit /bye  end the session
+  /help             list these commands
 
   ## EXAMPLES
   glaude
@@ -65,17 +64,17 @@ man: |
   ## SEE ALSO
   llm, miaougpt, denree, mkdir, touch, ls
 js: |
-  // glaude — une parodie de Claude Code propulsée par le module LLM central
-  // (ctx.llm), spécialisée dans la fabrication de sites HTML hideux et flashy.
-  // Au lancement elle amorce un projet sous /home/guest/<projet>, puis ouvre une
-  // session où "le Glaude" génère des pages. Le chargement du modèle, le cache
-  // et le comptage des tokens sont gérés par le manager unique (src/lib/llm.ts).
+  // glaude — a Claude Code parody powered by the central LLM module (ctx.llm),
+  // specialized in building hideous, flashy HTML sites. On launch it bootstraps
+  // a project under /home/guest/<project>, then opens a session where
+  // "le Glaude" generates pages. Model loading, cache and token counting are
+  // handled by the single manager (src/lib/llm.ts).
   const E = ctx.escape;
   const args = ctx.args.slice();
   const first = args[0];
 
-  // Modèles de code conseillés (du plus petit au plus gros). `base` = id sans le
-  // suffixe de quantification ; le bon build est choisi par le manager central.
+  // Recommended coding models (smallest first). `base` = id without the
+  // quantization suffix; the central manager picks the right build.
   const RECOMMENDED = [
     { label: 'Qwen2.5-Coder 0.5B', base: 'Qwen2.5-Coder-0.5B-Instruct', gb: 0.9 },
     { label: 'Qwen2.5-Coder 1.5B', base: 'Qwen2.5-Coder-1.5B-Instruct', gb: 1.9 },
@@ -84,14 +83,14 @@ js: |
   ];
   const DEFAULT = { base: 'Qwen2.5-Coder-1.5B-Instruct', label: 'Qwen2.5-Coder 1.5B', gb: 1.9 };
 
-  // ---- glaude --unload : libère le modèle résident ----
+  // ---- glaude --unload: free the resident model ----
   if (first === '--unload' || first === '--stop') {
     const freed = await ctx.llm.unload();
-    ctx.line(freed ? 'glaude: modèle déchargé, mémoire GPU libérée.' : 'glaude: aucun modèle chargé.');
+    ctx.line(freed ? 'glaude: model unloaded, GPU memory freed.' : 'glaude: no model loaded.');
     return;
   }
 
-  // ---- "la Denrée" en pixel-art coloré (l'extraterrestre de La Soupe aux Choux) ----
+  // ---- "la Denrée" in colored pixel art (the alien from La Soupe aux Choux) ----
   const PAL = { R: '#e23b2e', D: '#a82018', B: '#e9c277', N: '#6e4a2b', W: '#ffffff', o: '#2a2a2a' };
   const PIXES = [
     "       RRRRRR       ",
@@ -133,33 +132,33 @@ js: |
   }
   ctx.line('');
 
-  // Boîte d'accueil façon Claude Code.
+  // Claude Code-style welcome box.
   const box = (t) => '<div class="ln ascii-art"><span class="accent">' + E(t) + '</span></div>';
   ctx.append(box('╭──────────────────────────────────────────────╮'));
-  ctx.append('<div class="ln ascii-art"><span class="accent">│ </span><span class="accent text-glow">✻</span><span class="accent"> Bienvenue dans Glaude Code                 │</span></div>');
+  ctx.append('<div class="ln ascii-art"><span class="accent">│ </span><span class="accent text-glow">✻</span><span class="accent"> Welcome to Glaude Code                     │</span></div>');
   ctx.append(box('│                                              │'));
-  ctx.append(box('│   le pire webmaster du Bourbonnais 🥬        │'));
-  ctx.append(box('│   /help · /show pour admirer · /exit         │'));
+  ctx.append(box('│   the worst webmaster in Bourbonnais 🥬      │'));
+  ctx.append(box('│   /help · /show to admire · /exit            │'));
   ctx.append(box('╰──────────────────────────────────────────────╯'));
   ctx.line('');
 
-  // ---- liste des modèles (pas besoin de WebGPU) ----
+  // ---- model list (no WebGPU needed) ----
   if (first === '--list' || first === '-l') {
-    ctx.line('Modèles de code conseillés (du plus petit au plus gros) :');
+    ctx.line('Recommended coding models (smallest first):');
     ctx.line('');
     RECOMMENDED.forEach((r, i) => {
       ctx.append(
         '<div class="ln out"><span class="accent">' + (i + 1) + ')</span> ' +
         '<span class="cmd">' + E(r.label) + '</span> ' +
-        '<span class="comment">≈ ' + E(r.gb.toFixed(1)) + ' Go</span></div>',
+        '<span class="comment">≈ ' + E(r.gb.toFixed(1)) + ' GB</span></div>',
       );
     });
     ctx.line('');
-    ctx.line('Démarre :  glaude <numéro>   (ex. glaude 1)   ·   tous les modèles : `llm --list-all`');
+    ctx.line('Start:  glaude <number>   (e.g. glaude 1)   ·   all models: `llm --list-all`');
     return;
   }
 
-  // ---- petits utilitaires fichiers ----
+  // ---- small file helpers ----
   const slugify = (s) =>
     (s || '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -182,7 +181,7 @@ js: |
     return '';
   };
 
-  // ---- faux navigateur : affiche le HTML rendu dans une fenêtre dédiée ----
+  // ---- fake browser: shows the rendered HTML in its own window ----
   const openBrowser = (url, html) => {
     if (!document.getElementById('glb-style')) {
       const st = document.createElement('style');
@@ -239,7 +238,7 @@ js: |
     win.querySelector('[data-act=reload]').addEventListener('click', () => { frame.srcdoc = html; });
   };
 
-  // ---- mini-archiveur ZIP (méthode « stored », pur JS, sans dépendance) ----
+  // ---- mini ZIP archiver ("stored" method, plain JS, no dependency) ----
   const CRC_TABLE = (() => {
     const t = new Uint32Array(256);
     for (let n = 0; n < 256; n++) {
@@ -293,28 +292,29 @@ js: |
     return concatBytes([...locals, cd, end]);
   };
 
-  // ---- amorçage du projet (avant le chargement du modèle, comme Claude Code) ----
+  // ---- project bootstrap (before loading the model, like Claude Code) ----
   const HOME = (ctx.cfg && ctx.cfg.home) || '/home/guest';
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  // Rustic French-countryside flavor, in the spirit of le Glaude.
   const NOUN = [
-    'baguette', 'fromage', 'bistrot', 'potager', 'vignoble', 'escargot', 'accordeon',
-    'camembert', 'terroir', 'marmite', 'soupe', 'chou', 'beret', 'croissant', 'pinard',
-    'guinguette', 'brocante', 'rutabaga', 'pissenlit', 'topinambour',
+    'baguette', 'cheese', 'bistro', 'veggie-patch', 'vineyard', 'snail', 'accordion',
+    'camembert', 'terroir', 'stewpot', 'soup', 'cabbage', 'beret', 'croissant', 'red-wine',
+    'dance-hall', 'flea-market', 'turnip', 'dandelion', 'artichoke',
   ];
   const ADJ = [
-    'magnifique', 'flamboyant', 'formidable', 'fantastique', 'sensationnel', 'pittoresque',
-    'majestueux', 'croustillant', 'authentique', 'rustique', 'epoustouflant', 'tonitruant',
-    'savoureux', 'flashy', 'extraordinaire',
+    'magnificent', 'flamboyant', 'tremendous', 'fantastic', 'sensational', 'picturesque',
+    'majestic', 'crunchy', 'authentic', 'rustic', 'breathtaking', 'thundering',
+    'tasty', 'flashy', 'extraordinary',
   ];
-  const suggested = slugify(pick(NOUN) + '-' + pick(ADJ)) || 'projet-formidable';
+  const suggested = slugify(pick(NOUN) + '-' + pick(ADJ)) || 'tremendous-project';
 
-  ctx.append('<div class="ln"><span class="accent text-glow">✻</span> <span class="comment">le Glaude : « Bon, on monte quel site aujourd\'hui ? »</span></div>');
-  let projName = slugify(((await ctx.ask('nom du projet ? [' + suggested + ']')) || '').trim());
+  ctx.append('<div class="ln"><span class="accent text-glow">✻</span> <span class="comment">le Glaude: “Right, what site are we building today?”</span></div>');
+  let projName = slugify(((await ctx.ask('project name? [' + suggested + ']')) || '').trim());
   if (!projName) projName = suggested;
   const projPath = HOME + '/' + projName;
 
-  const ok = ((await ctx.ask('créer « ' + projPath + ' » et y travailler ? [Y/n]')) || '').trim().toLowerCase();
-  if (ok === 'n' || ok === 'no' || ok === 'non') { ctx.line('glaude: annulé — pas de projet créé.'); return; }
+  const ok = ((await ctx.ask('create "' + projPath + '" and work there? [Y/n]')) || '').trim().toLowerCase();
+  if (ok === 'n' || ok === 'no') { ctx.line('glaude: cancelled — no project created.'); return; }
 
   let mkErr = ctx.mkdir(projPath, true);
   if (mkErr) { ctx.error('glaude: ' + mkErr); return; }
@@ -328,78 +328,78 @@ js: |
     '.blink{animation:b .6s steps(2) infinite}@keyframes b{50%{opacity:0}}\n' +
     '</style>\n</head>\n<body>\n' +
     '<marquee behavior="alternate"><h1 class="rainbow">🥬 ' + projName + ' 🥬</h1></marquee>\n' +
-    '<p class="blink">SITE EN CONSTRUCTION !!! Demande au Glaude de le remplir !</p>\n' +
-    '<marquee direction="right">⭐⭐⭐ Bienvenue sur le plus beau site du web ⭐⭐⭐</marquee>\n' +
+    '<p class="blink">UNDER CONSTRUCTION !!! Ask le Glaude to fill it in!</p>\n' +
+    '<marquee direction="right">⭐⭐⭐ Welcome to the most beautiful site on the web ⭐⭐⭐</marquee>\n' +
     '</body>\n</html>\n';
   const wErr = ctx.write(projPath + '/index.html', STARTER);
   if (wErr) { ctx.error('glaude: ' + wErr); return; }
   const cdErr = ctx.cd(projPath);
   if (cdErr) ctx.error('glaude: ' + cdErr);
-  ctx.append('<div class="ln"><span class="comment">[</span><span class="accent text-glow"> OK </span><span class="comment">] projet « ' + E(projName) + ' » créé dans ' + E(projPath) + '</span></div>');
-  ctx.append('<div class="ln comment">         index.html de départ écrit — tape /show pour l\'admirer.</div>');
+  ctx.append('<div class="ln"><span class="comment">[</span><span class="accent text-glow"> OK </span><span class="comment">] project "' + E(projName) + '" created in ' + E(projPath) + '</span></div>');
+  ctx.append('<div class="ln comment">         starter index.html written — type /show to admire it.</div>');
   ctx.line('');
 
-  // ---- chargement du modèle via le module central (consentement + barre) ----
-  // Réutilise le modèle déjà chaud si présent et qu'aucun modèle n'est demandé ;
-  // sinon propose un modèle de code (par numéro, id, ou le défaut).
+  // ---- model loading through the central module (consent + progress bar) ----
+  // Reuses the warm model if there is one and none was requested; otherwise
+  // suggests a coding model (by number, id, or the default).
   let session;
   try {
     const st = ctx.llm.state();
     if (st && st.modelId && !first) {
       session = { modelId: st.modelId, label: st.label };
-      ctx.line('le Glaude réutilise le modèle déjà chaud : ' + (st.label || st.modelId));
+      ctx.line('le Glaude reuses the warm model: ' + (st.label || st.modelId));
     } else {
       let base = DEFAULT.base, label = DEFAULT.label, gb = DEFAULT.gb;
       if (first && /^\d+$/.test(first)) {
         const n = parseInt(first, 10);
         if (n >= 1 && n <= RECOMMENDED.length) { base = RECOMMENDED[n - 1].base; label = RECOMMENDED[n - 1].label; gb = RECOMMENDED[n - 1].gb; }
-        else { ctx.error('glaude: pas de modèle conseillé n°' + n + ' — voir : glaude --list'); return; }
+        else { ctx.error('glaude: no recommended model #' + n + ' — see: glaude --list'); return; }
       } else if (first) {
         base = first; label = first; gb = undefined;
       }
-      session = await ctx.llm.ensure({ base, label, gb, reason: 'le Glaude code ton site' });
+      session = await ctx.llm.ensure({ base, label, gb, reason: 'le Glaude codes your site' });
     }
   } catch (e) {
     ctx.error('glaude: ' + ((e && (e.message || e.name)) || e));
-    ctx.line('Le Glaude a besoin de WebGPU. Essaie un Chrome/Edge récent (≥ 113) ou Safari 18+.');
-    ctx.line('(Ton projet « ' + projName + ' » reste créé — relance `glaude` pour /show.)');
+    ctx.line('le Glaude needs WebGPU. Try a recent Chrome/Edge (≥ 113) or Safari 18+.');
+    ctx.line('(Your project "' + projName + '" is still there — run `glaude` again to /show it.)');
     return;
   }
-  if (!session) { ctx.line('glaude: annulé — aucun modèle chargé (ton projet « ' + projName + ' » reste créé).'); return; }
+  if (!session) { ctx.line('glaude: cancelled — no model loaded (your project "' + projName + '" is still there).'); return; }
   const modelId = session.modelId;
 
-  // Ancre scrollable du terminal (pour rester collé en bas pendant le stream).
-  const scroller = (ctx.append('<div class="ln comment">moteur prêt — ' + E(session.label || modelId) + '</div>')).closest('.ssh-body');
+  // Terminal scroll anchor (stays pinned to the bottom while streaming).
+  const scroller = (ctx.append('<div class="ln comment">engine ready — ' + E(session.label || modelId) + '</div>')).closest('.ssh-body');
   const toBottom = () => { if (scroller) scroller.scrollTop = scroller.scrollHeight; };
 
-  // ---- session : génération de sites ----
+  // ---- session: site generation ----
   ctx.line('');
-  ctx.append('<div class="ln"><span class="accent text-glow">● le Glaude bricole ton site</span> <span class="comment">— ' + E(modelId) + ' · projet ' + E(projName) + '</span></div>');
-  ctx.line('Décris la page voulue, tape Entrée. Puis /save pour écrire, /show pour admirer.');
-  ctx.line('Commandes : /help · /show · /save · /download · /files · /reset · /exit');
+  ctx.append('<div class="ln"><span class="accent text-glow">● le Glaude is tinkering with your site</span> <span class="comment">— ' + E(modelId) + ' · project ' + E(projName) + '</span></div>');
+  ctx.line('Describe the page you want, press Enter. Then /save to write it, /show to admire it.');
+  ctx.line('Commands: /help · /show · /save · /download · /files · /reset · /exit');
   ctx.line('');
 
   const SYSTEM = {
     role: 'system',
     content:
-      "Tu es « le Glaude » (Claude Ratinier), un vieux paysan bourbonnais du film " +
-      "*La Soupe aux Choux* reconverti en webmaster, à la manière de Claude Code. " +
-      "Tu tournes entièrement dans le navigateur de l'utilisateur via WebLLM, sans serveur. " +
-      "Ta spécialité : fabriquer des sites web VOLONTAIREMENT HIDEUX et ULTRA-FLASHY, " +
-      "façon GeoCities 1997 — fonds fluo qui piquent les yeux, dégradés arc-en-ciel, " +
-      "police Comic Sans, balises <marquee> qui défilent, texte qui clignote (animation CSS), " +
+      "You are \"le Glaude\" (Claude Ratinier), an old farmer from the Bourbonnais in the French film " +
+      "*La Soupe aux Choux*, turned webmaster in the manner of Claude Code. " +
+      "You run entirely in the user's browser through WebLLM, with no server. " +
+      "Your specialty: building DELIBERATELY HIDEOUS and ULTRA-FLASHY websites, " +
+      "GeoCities 1997 style — eye-searing neon backgrounds, rainbow gradients, " +
+      "Comic Sans font, scrolling <marquee> tags, blinking text (CSS animation), " +
       "emojis partout, bordures clignotantes, couleurs qui jurent. " +
-      "Le projet courant s'appelle « " + projName + " » et vit dans " + projPath + ". " +
-      "RÈGLE ABSOLUE : réponds TOUJOURS avec UN SEUL document HTML complet et autonome " +
-      "(de <!doctype html> à </html>), tout le CSS dans une balise <style>, le tout dans " +
-      "un unique bloc de code ```html. Pas de JavaScript (le rendu est sandboxé). " +
-      "Ajoute une courte phrase rustique avant le bloc, mais le code doit être complet et moche. " +
-      "Réponds en français.",
+      "The current project is called \"" + projName + "\" and lives in " + projPath + ". " +
+      "ABSOLUTE RULE: ALWAYS answer with ONE complete, self-contained HTML document " +
+      "(from <!doctype html> to </html>), all the CSS in a <style> tag, the whole thing in " +
+      "a single ```html code block. No JavaScript (the preview is sandboxed). " +
+      "Add a short rustic sentence before the block, but the code must be complete and ugly. " +
+      "Answer in English.",
   };
   let messages = [SYSTEM];
   let lastHtml = '';
 
-  // Ctrl+C interrompt une génération en cours.
+  // Ctrl+C interrupts a running generation.
   if (ctx.signal) {
     ctx.signal.addEventListener('abort', () => { ctx.llm.interrupt(); }, { once: true });
   }
@@ -413,31 +413,31 @@ js: |
     ctx.append('<div class="ln"><span class="prompt">›</span> <span class="cmd">' + E(q) + '</span></div>');
 
     const low = q.toLowerCase();
-    if (low === '/exit' || low === '/quit' || low === '/bye') { ctx.line('Allez, à la revoyure ! 🍷'); break; }
+    if (low === '/exit' || low === '/quit' || low === '/bye') { ctx.line('Right then, see you around! 🍷'); break; }
     if (low === '/help') {
-      ctx.line('/show [fichier]  voir le rendu  ·  /save [fichier]  écrire la page  ·  /files  lister');
-      ctx.line('/download  télécharger le projet en .zip  ·  /project  rappeler le projet');
-      ctx.line('/reset  oublier le contexte  ·  /model  ·  /exit');
+      ctx.line('/show [file]  view the result  ·  /save [file]  write the page  ·  /files  list');
+      ctx.line('/download  download the project as a .zip  ·  /project  show the project');
+      ctx.line('/reset  forget the context  ·  /model  ·  /exit');
       continue;
     }
-    if (low === '/model') { ctx.line('modèle : ' + modelId); continue; }
-    if (low === '/project' || low === '/pwd') { ctx.line('projet « ' + projName + ' » — ' + projPath); continue; }
-    if (low === '/reset' || low === '/clear') { messages = [SYSTEM]; ctx.line('contexte oublié — on repart à neuf (le projet reste).'); continue; }
+    if (low === '/model') { ctx.line('model: ' + modelId); continue; }
+    if (low === '/project' || low === '/pwd') { ctx.line('project "' + projName + '" — ' + projPath); continue; }
+    if (low === '/reset' || low === '/clear') { messages = [SYSTEM]; ctx.line('context forgotten — starting afresh (the project stays).'); continue; }
     if (low === '/files' || low === '/ls') {
       const r = ctx.list(projPath);
       if (r && r.error) ctx.error('glaude: ' + r.error);
       else {
         const entries = (r && r.entries) || [];
-        ctx.line(entries.length ? entries.map((e2) => e2.name + (e2.type === 'dir' ? '/' : '')).join('  ') : '(projet vide)');
+        ctx.line(entries.length ? entries.map((e2) => e2.name + (e2.type === 'dir' ? '/' : '')).join('  ') : '(empty project)');
       }
       continue;
     }
     if (low === '/save' || low.startsWith('/save ')) {
-      if (!lastHtml) { ctx.error('glaude: rien à enregistrer — demande d\'abord une page au Glaude.'); continue; }
+      if (!lastHtml) { ctx.error('glaude: nothing to save — ask le Glaude for a page first.'); continue; }
       const f = fileName(q.replace(/^\/save\s*/i, ''), 'index.html');
       const e3 = ctx.write(projPath + '/' + f, lastHtml);
       if (e3) ctx.error('glaude: ' + e3);
-      else ctx.line('💾 enregistré : ' + projPath + '/' + f + ' (' + lastHtml.length + ' octets)');
+      else ctx.line('💾 saved: ' + projPath + '/' + f + ' (' + lastHtml.length + ' bytes)');
       continue;
     }
     if (low === '/show' || low.startsWith('/show ')) {
@@ -447,12 +447,12 @@ js: |
       let html = (r && r.content) || '';
       if ((!html || !html.trim()) && lastHtml) {
         const e3 = ctx.write(full, lastHtml);
-        if (!e3) { html = lastHtml; ctx.line('💾 (enregistré ' + f + ' au passage)'); }
+        if (!e3) { html = lastHtml; ctx.line('💾 (saved ' + f + ' along the way)'); }
       }
-      if (!html || !html.trim()) { ctx.error('glaude: ' + f + ' est vide — demande une page puis réessaie.'); continue; }
+      if (!html || !html.trim()) { ctx.error('glaude: ' + f + ' is empty — ask for a page, then try again.'); continue; }
       const url = 'http://localhost/' + projName + (f === 'index.html' ? '' : '/' + f);
       openBrowser(url, html);
-      ctx.line('🌐 navigateur ouvert sur ' + url + ' (Échap ou ✕ pour fermer).');
+      ctx.line('🌐 browser opened on ' + url + ' (Esc or ✕ to close).');
       continue;
     }
     if (low === '/download' || low === '/dl' || low === '/zip') {
@@ -472,7 +472,7 @@ js: |
         }
       };
       walk(projPath, projName);
-      if (!files.length) { ctx.error('glaude: projet vide — rien à télécharger.'); continue; }
+      if (!files.length) { ctx.error('glaude: empty project — nothing to download.'); continue; }
       try {
         const zip = buildZip(files);
         const blobUrl = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
@@ -480,16 +480,16 @@ js: |
         a.href = blobUrl; a.download = projName + '.zip';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
-        ctx.line('⬇️  ' + projName + '.zip téléchargé — ' + files.length + ' fichier(s).');
+        ctx.line('⬇️  ' + projName + '.zip downloaded — ' + files.length + ' file(s).');
       } catch (e) {
-        ctx.error('glaude: échec du zip — ' + (e.message || e.name));
+        ctx.error('glaude: zip failed — ' + (e.message || e.name));
       }
       continue;
     }
 
     messages.push({ role: 'user', content: q });
 
-    // Stream de la réponse via le module central (tokens comptés par le widget).
+    // Stream the answer through the central module (tokens counted by the widget).
     const row = ctx.append('<div class="ln out" style="white-space:pre-wrap"><span class="accent">le Glaude› </span><span class="reply comment">…</span></div>');
     const replyEl = row.querySelector('.reply');
     let result;
@@ -505,17 +505,17 @@ js: |
         },
       });
     } catch (e) {
-      if (!(ctx.signal && ctx.signal.aborted)) ctx.error('glaude: génération échouée — ' + (e.message || e.name));
+      if (!(ctx.signal && ctx.signal.aborted)) ctx.error('glaude: generation failed — ' + (e.message || e.name));
     }
 
     const reply = (result && result.content) || replyEl.textContent || '';
-    if (!reply) replyEl.textContent = '(la Denrée a mangé la réponse)';
+    if (!reply) replyEl.textContent = '(la Denrée ate the answer)';
     messages.push({ role: 'assistant', content: reply });
 
     const h = extractHtml(reply);
     if (h) {
       lastHtml = h;
-      ctx.append('<div class="ln comment">↳ page HTML détectée (' + h.length + ' octets) — /save pour l\'écrire · /show pour l\'admirer.</div>');
+      ctx.append('<div class="ln comment">↳ HTML page detected (' + h.length + ' bytes) — /save to write it · /show to admire it.</div>');
     }
 
     if (result && result.usage && typeof result.usage.tokPerSec === 'number') {
@@ -525,5 +525,5 @@ js: |
     if (ctx.signal && ctx.signal.aborted) break;
   }
 
-  ctx.line('glaude: session close (le modèle reste chaud — `llm --unload` pour le libérer).');
+  ctx.line('glaude: session closed (the model stays warm — `llm --unload` to free it).');
 ---

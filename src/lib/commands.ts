@@ -14,13 +14,30 @@ export interface CmdDef {
   alias?: string[];
   /** Authored manual page (markdown), shown by `man <name>`. */
   man?: string;
+  /**
+   * `page: false` opts the command out of its standalone `/<name>` landing
+   * page (control commands, argument-required utilities, side effects).
+   */
+  page?: boolean;
+  /**
+   * `index: false` keeps the landing page but out of search engines
+   * (`noindex`, not in the sitemap) — for thin pages with no search intent.
+   */
+  index?: boolean;
+  /**
+   * Command line run when a visitor lands on `/<name>/` (e.g. `cal`, or
+   * `nslookup %HOST%`), so the page shows the tool at work; without it the
+   * landing page opens the manual. `%HOST%` / `%URL%` are the serving host /
+   * origin.
+   */
+  demo?: string;
   js?: string;
   body: string;
 }
 
 /**
  * Parse a command markdown file: YAML-ish frontmatter (`name`, `desc`, an
- * optional comma/space-separated `alias` list) plus the multi-line `key: |`
+ * optional comma/space-separated `alias` list, `page: false`, `index: false`, `demo`) plus the multi-line `key: |`
  * block scalars `man` and `js`, followed by the body.
  *
  * A `key: |` block runs over the indented (and blank) lines that follow it and
@@ -54,6 +71,9 @@ export function parseCommand(raw: string): CmdDef {
     if (kv) {
       if (kv[1] === 'name') def.name = kv[2];
       else if (kv[1] === 'desc') def.desc = kv[2];
+      else if (kv[1] === 'page') def.page = kv[2].trim() !== 'false';
+      else if (kv[1] === 'index') def.index = kv[2].trim() !== 'false';
+      else if (kv[1] === 'demo') def.demo = kv[2].trim();
       else if (kv[1] === 'alias') {
         const aliases = kv[2].split(/[\s,]+/).filter(Boolean);
         if (aliases.length) def.alias = aliases;
@@ -86,6 +106,17 @@ export function validateCommand(raw: string, def: CmdDef, file: string): string[
     return errors; // nothing else is trustworthy without frontmatter
   }
   if (!def.name) errors.push(`${file}: frontmatter is missing a "name" field`);
+  for (const key of ['page', 'index']) {
+    const flag = raw.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
+    if (flag && !/^(true|false)$/.test(flag[1].trim()))
+      errors.push(`${file}: "${key}" must be true or false (got "${flag[1].trim()}")`);
+  }
+  // A demo must run this very command (by name or alias), not something else.
+  if (def.demo !== undefined) {
+    const head = def.demo.split(/\s+/)[0];
+    if (head !== def.name && !(def.alias ?? []).includes(head))
+      errors.push(`${file}: "demo" must start with the command name (got "${def.demo}")`);
+  }
   if (def.js !== undefined && !def.js.trim()) errors.push(`${file}: "js: |" block is empty`);
   if (def.js) {
     try {

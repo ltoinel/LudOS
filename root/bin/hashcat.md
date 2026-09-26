@@ -247,7 +247,8 @@ js: |
     blobUrl = URL.createObjectURL(
       new Blob(['(' + workerMain.toString() + ')()'], { type: 'text/javascript' }),
     );
-    workers = Array.from({ length: cores }, () => new Worker(blobUrl));
+    // Tracked by the shell, so `top` can show them while they crack.
+    workers = Array.from({ length: cores }, (_, i) => ctx.worker(blobUrl, `hashcat#${i + 1}`));
   } catch (err) {
     ctx.error('hashcat: could not start workers (' + (err.message || err.name) + ')');
     if (blobUrl) URL.revokeObjectURL(blobUrl);

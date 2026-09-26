@@ -105,9 +105,9 @@ js: |
     if (!tts || !text || !text.trim()) return;
     const u = new SpeechSynthesisUtterance(text);
     if (voiceLang) u.lang = voiceLang;
-    try { tts.speak(u); } catch (e) { /* ignore */ }
+    try { tts.speak(u); } catch { /* ignore */ }
   };
-  const stopSpeaking = () => { if (tts) { try { tts.cancel(); } catch (e) { /* ignore */ } } };
+  const stopSpeaking = () => { if (tts) { try { tts.cancel(); } catch { /* ignore */ } } };
 
   // Ctrl+C interrupts the running generation and closes the session.
   if (ctx.signal) {

@@ -4,7 +4,7 @@ import Dock from '../components/Dock.astro';
 import LlmWidget from '../components/LlmWidget.astro';
 import Terminal from '../components/Terminal.astro';
 import { routes, commandDefs, manToHtml, manMetaDescription, lastmod } from '../lib/content';
-import { site } from '../site.config.ts';
+import { site, siteHost } from '../site.config.ts';
 
 // One static page per deep-linkable command / document. Opening the URL boots
 // the terminal, which then runs `man <command>` (see terminal.ts). The terminal
@@ -28,6 +28,7 @@ export function getStaticPaths() {
         manHtml,
         manDesc: man ? manMetaDescription(man) : '',
         dateModified: lastmod(r.slug),
+        noindex: Boolean(r.noindex),
       },
     };
   });
@@ -44,19 +45,37 @@ interface Props {
   manDesc: string;
   /** Source file's last-modified date (YYYY-MM-DD), or null. */
   dateModified: string | null;
+  /** Thin page kept out of search engines (`index: false`). */
+  noindex: boolean;
 }
-const { label, desc, manHtml, manDesc, dateModified } = Astro.props;
+const { label, desc, manHtml, manDesc, dateModified, noindex } = Astro.props;
 
 // <title> seeds from the route title. The meta description prefers the richer
 // man DESCRIPTION; otherwise the short route desc plus a context suffix (kept
 // under the snippet limit). These also feed Open Graph / Twitter via the Layout.
 const title = `${label} — ${site.name}`;
-const suffix = ` · terminal interactif de ${site.shell.host}`;
+const suffix = ` · interactive terminal of ${siteHost}`;
 const fallback = desc.length + suffix.length <= 160 ? `${desc}${suffix}` : desc;
 const description = manDesc || fallback;
 ---
 
-<Layout title={title} description={description} breadcrumb={label} dateModified={dateModified}>
+<Layout
+  title={title}
+  description={description}
+  breadcrumb={label}
+  dateModified={dateModified}
+  {noindex}
+>
+  {
+    /* Visible breadcrumb — the same trail as the BreadcrumbList JSON-LD, which
+      Google expects to match what the page shows. */
+  }
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">~</a>
+    <span class="crumbs-sep" aria-hidden="true">/</span>
+    <span aria-current="page">{label}</span>
+  </nav>
+
   <Terminal />
 
   <Dock />
@@ -65,3 +84,35 @@ const description = manDesc || fallback;
   {/* Crawlable mirror of the manual the terminal renders on load. */}
   {manHtml && <article class="sr-only" set:html={manHtml} />}
 </Layout>
+
+<style>
+  .crumbs {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    left: 1rem;
+    z-index: 30;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--dim);
+    text-shadow: var(--glow);
+    /* A small pill, like the dock, so it reads over the animated backgrounds. */
+    padding: 0.2rem 0.6rem;
+    background: var(--bg-bar);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .crumbs a {
+    color: var(--green);
+    text-decoration: none;
+  }
+  .crumbs a:hover,
+  .crumbs a:focus-visible {
+    text-decoration: underline;
+  }
+  .crumbs-sep {
+    margin: 0 0.35rem;
+  }
+  .crumbs [aria-current='page'] {
+    color: var(--fg);
+  }
+</style>

@@ -1,6 +1,7 @@
 ---
 name: touch
 desc: create an empty file — e.g. touch notes.txt
+page: false
 man: |
   # TOUCH(1)
 

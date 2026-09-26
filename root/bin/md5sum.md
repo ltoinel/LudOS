@@ -2,6 +2,7 @@
 name: md5sum
 desc: compute an MD5 checksum — e.g. md5 hello
 alias: md5
+demo: md5sum hello
 man: |
   # MD5SUM(1)
 
@@ -18,6 +19,22 @@ man: |
 
   MD5 is broken for security use (collisions are cheap) — it lives here as
   a checksum and as a companion to hashcat.
+
+  ## HOW IT WORKS
+  MD5 turns any input into a fixed 128-bit fingerprint, shown as 32
+  hexadecimal characters. The same text always gives the same hash, and the
+  smallest change gives a completely different one. The algorithm is
+  implemented in the page itself, and the text is hashed as UTF-8 bytes, so
+  the result matches `echo -n "text" | md5sum` on Linux.
+
+  ## USE CASES
+  - verify a download against a published MD5 checksum;
+  - detect accidental changes or duplicates in data;
+  - produce test vectors for the hashcat command.
+
+  ## SECURITY
+  Do not use MD5 for passwords or signatures: collisions can be forged
+  cheaply. Prefer SHA-256 (sha256sum) for anything security-related.
 
   ## EXAMPLES
   md5sum hello

@@ -1,0 +1,61 @@
+# nginx server block for {{HOST}} — static site (DocumentRoot = dist/),
+# rendered by `npm run deploy:config` into deploy/generated/nginx.conf.
+# plus the `msg` email relay proxied to a local Node process.
+# Cache policy by path (declared at http level — this file is included there).
+# Pages and the shell data must be revalidated on every visit, otherwise a CDN
+# or browser keeps an old page that points to /_astro files of a past build.
+# /_astro files have content-hashed names, so they can be cached "forever".
+map $uri $portal_cache_control {
+    ~^/_astro/   "public, max-age=31536000, immutable";
+    ~^/fonts/    "public, max-age=2592000";
+    ~^/icons/    "public, max-age=604800";
+    default      "no-cache";
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{HOST}};
+
+    ssl_certificate     {{BASE_DIR}}/certs/certificate.pem;
+    ssl_certificate_key {{BASE_DIR}}/certs/private.key;
+
+    root {{APP_DIR}}/dist/;
+    index index.html;
+
+    # --- Security headers (sent on every response) ---------------------------
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()" always;
+    add_header Cache-Control $portal_cache_control always;
+
+    # --- Content-Security-Policy ---------------------------------------------
+    # 'unsafe-eval': dynamic commands run via AsyncFunction; blob: workers: hashcat.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; font-src 'self' data:; connect-src 'self' https:; manifest-src 'self'; worker-src 'self' blob:; frame-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+
+    # --- `msg` command: email relay (server/msg-server.ts, see msg-relay.service)
+    # X-Real-IP comes from $remote_addr, so the relay's per-IP limits can't be
+    # bypassed with a forged X-Forwarded-For.
+    location = /api/msg {
+        limit_except POST { deny all; }
+        client_max_body_size 4k;
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 20s;
+    }
+
+    # Every page is pre-rendered, so an unknown URL is a real 404 (served with
+    # the 404 status — a catch-all to /index.html would create "soft 404s").
+    error_page 404 /404.html;
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /admin {
+        auth_basic "Restricted Access";
+        auth_basic_user_file /etc/nginx/htpasswd/default;
+    }
+}

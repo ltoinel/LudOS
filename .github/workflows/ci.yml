@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.x' # engines: >=22.18 (native TS)
           cache: npm
 
       - run: npm ci

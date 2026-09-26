@@ -6,7 +6,9 @@
  *   - `WebSite` — the site itself, published by that Person (always present)
  *   - `ProfilePage` (home) / `WebPage` (sub-pages) — the current document, whose
  *     `mainEntity` / `about` is the Person (Google's profile-page markup)
- *   - `BreadcrumbList` — Home › <page>, only on sub-pages (when `breadcrumb` set)
+ *   - `BreadcrumbList` — Home › <page>, only on sub-pages (when `breadcrumb` set),
+ *     mirroring the visible breadcrumb of those pages
+ * On the 404 (`notFound`), only `Person` and `WebSite` are emitted.
  *
  * Self-contained: it reads the central `site.config.ts`, so identity changes in
  * one place propagate to the structured data.
@@ -20,8 +22,10 @@ interface Props {
   breadcrumb?: string;
   /** Last-modified date (YYYY-MM-DD) for the page, if known. */
   dateModified?: string | null;
+  /** Error page (404): emit the identity only — no WebPage / ProfilePage. */
+  notFound?: boolean;
 }
-const { title, breadcrumb, dateModified } = Astro.props;
+const { title, breadcrumb, dateModified, notFound = false } = Astro.props;
 
 const PERSON_ID = `${site.url}/#person`;
 const WEBSITE_ID = `${site.url}/#website`;
@@ -78,14 +82,15 @@ const webpage = {
   ...(dateModified ? { dateModified } : {}),
 };
 
-const graph: object[] = [person, website, webpage];
+// A 404 describes no page: only the site identity is emitted there.
+const graph: object[] = notFound ? [person, website] : [person, website, webpage];
 
-if (breadcrumb) {
+if (breadcrumb && !notFound) {
   graph.push({
     '@type': 'BreadcrumbList',
     '@id': `${here}#breadcrumb`,
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Accueil', item: `${site.url}/` },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${site.url}/` },
       { '@type': 'ListItem', position: 2, name: breadcrumb, item: here },
     ],
   });

@@ -1,11 +1,11 @@
 @import 'tailwindcss';
 
 /* ============================================================================
-   TERMINAL / PHOSPHOR THEME — ludovic.toinel.com
+   TERMINAL / PHOSPHOR THEME
    CRT font (VT323) for display, IBM Plex Mono for body text.
    Default theme = green phosphor on black (no attribute); other phosphor
-   palettes apply via `html[data-theme='<id>']` (amber, ice, synthwave, white,
-   red). The theme list lives in src/lib/themes.ts.
+   palettes apply via `html[data-theme='<id>']` (amber, ice, synthwave,
+   cyberpunk, white, red). The theme list lives in src/lib/themes.ts.
    ========================================================================== */
 
 /* Self-hosted fonts (latin subset) — no third-party request, CSP-friendly.
@@ -123,6 +123,29 @@ html[data-theme='synthwave'] {
   --glow-strong: 0 0 16px rgba(87, 224, 255, 0.6);
   --scan: 0.05;
   --grain: 0.05;
+}
+
+html[data-theme='cyberpunk'] {
+  /* --- Cyberpunk: neon yellow phosphor, cyan + hot-pink accents, blue-black.
+         Paired with the neon-grid background (CyberGrid.astro). --- */
+  --bg: #07070f;
+  --bg-elev: #0d0d1c;
+  --bg-bar: #14142a;
+  --fg: #e8f7ff;
+  --fg-bright: #ffffff;
+  --green: #fcee0a; /* primary phosphor (neon yellow) */
+  --green-dim: #a89e07;
+  --amber: #ff2a6d; /* hot pink */
+  --cyan: #00f0ff;
+  --dim: #5f6a8a;
+  --border: #1f2a4a;
+  --border-bright: #00f0ff;
+  --sel-bg: #ff2a6d;
+  --sel-fg: #07070f;
+  --glow: 0 0 6px rgba(252, 238, 10, 0.55), 0 0 12px rgba(255, 42, 109, 0.25);
+  --glow-strong: 0 0 14px rgba(0, 240, 255, 0.7);
+  --scan: 0.06;
+  --grain: 0.06;
 }
 
 html[data-theme='white'] {
@@ -379,7 +402,7 @@ html[data-theme='red'] {
   display: inline-flex;
 }
 
-/* ---------- Unsplash wallpaper layer (dock `fond` button) ---------- */
+/* ---------- Unsplash wallpaper layer (dock `wall` button) ---------- */
 .fx-wallpaper {
   position: fixed;
   inset: 0;
@@ -540,7 +563,7 @@ html:not(.js) .ssh-win {
   border: 1px solid var(--border-bright);
   border-radius: 9px;
 }
-.noscript-fallback h1 {
+.noscript-fallback .ns-name {
   margin: 0 0 0.25rem;
   font-family: var(--font-crt);
   font-size: 2rem;
@@ -667,6 +690,11 @@ html:not(.js) .ssh-win {
   box-shadow: var(--glow);
 }
 
+/* The body takes the focus while a command runs (so Ctrl+C reaches it): no
+   focus ring — the terminal itself shows it is active. */
+.ssh-body:focus {
+  outline: none;
+}
 .ssh-body {
   flex: 1;
   min-height: 0;
@@ -831,6 +859,24 @@ html[data-theme] .fx-matrix {
 }
 @media (prefers-reduced-motion: reduce) {
   .fx-matrix {
+    display: none;
+  }
+}
+
+/* Neon perspective grid (cyberpunk theme only — see CyberGrid.astro). */
+.fx-cyber {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  opacity: 0.55;
+}
+html[data-theme='cyberpunk'] .fx-cyber {
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='cyberpunk'] .fx-cyber {
     display: none;
   }
 }

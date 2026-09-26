@@ -1,6 +1,7 @@
 ---
 name: mkdir
 desc: create a directory — e.g. mkdir -p projects/2026
+page: false
 man: |
   # MKDIR(1)
 

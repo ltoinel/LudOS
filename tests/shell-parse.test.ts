@@ -27,6 +27,22 @@ describe('parseCommandLine — stages & tokens', () => {
   it('returns no stages for an empty line', () => {
     expect(parseCommandLine('   ')).toEqual({ stages: [], redirect: null });
   });
+  it('strips surrounding quotes from a token', () => {
+    expect(parseCommandLine('grep "."').stages[0]).toMatchObject({
+      name: 'grep',
+      args: ['.'],
+    });
+    expect(parseCommandLine("grep '.'").stages[0].args).toEqual(['.']);
+  });
+  it('keeps whitespace inside quotes as one token', () => {
+    expect(parseCommandLine('echo "hello world"').stages[0].args).toEqual(['hello world']);
+  });
+  it('concatenates adjacent quoted and unquoted runs', () => {
+    expect(parseCommandLine('echo --re="a b"').stages[0].args).toEqual(['--re=a b']);
+  });
+  it('runs an unterminated quote to end of input', () => {
+    expect(parseCommandLine('echo "abc').stages[0].args).toEqual(['abc']);
+  });
 });
 
 describe('parseCommandLine — pipes', () => {
@@ -73,5 +89,37 @@ describe('parseCommandLine — redirection', () => {
     const p = parseCommandLine('> file');
     expect(p.redirect).toBeNull();
     expect(p.stages[0].name).toBe('>');
+  });
+});
+
+describe('parseCommandLine — quoted operators', () => {
+  it('keeps a quoted pipe inside one argument', () => {
+    const p = parseCommandLine('echo "a | b"');
+    expect(p.stages).toEqual([{ name: 'echo', args: ['a | b'], raw: 'echo "a | b"' }]);
+  });
+  it('keeps a quoted > as literal text, not a redirection', () => {
+    const p = parseCommandLine("echo 'x > y'");
+    expect(p.redirect).toBeNull();
+    expect(p.stages[0].args).toEqual(['x > y']);
+  });
+  it('still redirects after a quoted operator', () => {
+    const p = parseCommandLine('grep ">" notes.md > hits');
+    expect(p.stages[0]).toEqual({
+      name: 'grep',
+      args: ['>', 'notes.md'],
+      raw: 'grep ">" notes.md',
+    });
+    expect(p.redirect).toEqual({ path: 'hits', append: false });
+  });
+  it('splits a pipeline around quoted stages', () => {
+    const p = parseCommandLine('cat f | grep "a|b" | wc');
+    expect(p.stages.map((s) => s.args)).toEqual([['f'], ['a|b'], []]);
+    expect(p.stages[1].raw).toBe('grep "a|b"');
+  });
+  it('accepts a quoted redirection target', () => {
+    expect(parseCommandLine('echo hi > "my file"').redirect).toEqual({
+      path: 'my file',
+      append: false,
+    });
   });
 });

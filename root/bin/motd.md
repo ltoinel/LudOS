@@ -1,6 +1,7 @@
 ---
 name: motd
 desc: message of the day (welcome banner)
+index: false
 man: |
   # MOTD(1)
 
@@ -11,20 +12,23 @@ man: |
   motd
 
   ## DESCRIPTION
-  Shows the welcome banner: the Lud'OS ASCII logo, a systemd-style boot
-  sequence, the last-login date and a random quote. This is what the
+  Shows the welcome banner: the LudOS logo drawn by the asciiart command,
+  the release, a systemd-style boot sequence, the last-login date and a
+  random quote or joke from the fortune command. This is what the
   connection plays (see boot).
 
   ## EXAMPLES
   motd
 
   ## SEE ALSO
-  boot
+  boot, asciiart, fortune
 js: |
   const E = ctx.escape;
-  // `.ascii-art` forces a block-capable monospace (see global.css) so the art aligns.
-  const art = (t) => `<div class="ln ascii-art"><span class="accent text-glow">${E(t)}</span></div>`;
-  const narrow = typeof window !== 'undefined' && window.innerWidth < 680;
+
+  // Logo, drawn by the asciiart command, with the release underneath.
+  await ctx.exec('asciiart', ['-s', 'shadow', 'LudOS']);
+  if (ctx.cfg.version) ctx.sysLine(`version ${ctx.cfg.version}`);
+  ctx.line('');
 
   // systemd-style boot sequence.
   const ok = (msg) =>
@@ -32,7 +36,6 @@ js: |
       `<div class="ln"><span class="comment">[</span><span class="accent text-glow"> OK </span><span class="comment">] ${E(msg)}</span></div>`,
     );
   const steps = [
-    'Lud\'OS 1.0 kernel loaded',
     `${ctx.commands.length} commands mounted on /bin`,
     'Encrypted LTS link established',
     'CRT theme calibrated · glow nominal',
@@ -83,18 +86,10 @@ js: |
     /* localStorage unavailable */
   }
 
-  // Random fortune (backticks become code via the inline renderer).
-  const fortunes = [
-    "There's no place like `127.0.0.1`.",
-    'When in doubt: `man`, then coffee.',
-    '99 little bugs in the code… `127` little bugs in the code.',
-    "The best code is the code you don't have to write.",
-    '`sudo` make me a sandwich.',
-    'The drone is ready. So is the sky.',
-    "There are 10 kinds of people: those who read binary and those who don't.",
-  ];
+  // A quote or a developer joke, from the fortune command (it falls back to a
+  // built-in list when offline).
   ctx.line('');
-  ctx.line('☞ ' + fortunes[Math.floor(Math.random() * fortunes.length)]);
+  await ctx.exec('fortune');
   ctx.line('');
 
   // Quick start.

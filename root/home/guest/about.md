@@ -1,13 +1,13 @@
-# À propos
+# About
 
-Passionné de technologie depuis toujours, je conçois et fais évoluer des architectures fullstack complexes. Au quotidien, j'explore et j'intègre l'innovation en tant qu'Architecte chez **Capgemini**.
+A lifelong technology enthusiast, I design and evolve complex fullstack architectures. Day to day, I explore and bring innovation to life as an Architect at **Capgemini**.
 
-Le reste du temps, je vis ma passion de *maker* à 360° :
+The rest of the time, I live my passion as a 360° *maker*:
 
-* 🌐 **Le partage :** Je décrypte l'actu tech et mes expérimentations sur mon blog de longue date [Geeek.org](https://www.geeek.org).
-* 🛠️ **Le code & la sécurité :** Je contribue à des projets open source et je pratique le hacking éthique.
-* 📸 **L'image & le grand air :** Adepte de photographie et de pilotage de drones FPV, j'aime aussi prendre la route. Mon site [Apollovan](https://apollovan.fr) retrace mes road trips en van aménagé.
+* 🌐 **Sharing:** I decode tech news and my experiments on my long-running blog [Geeek.org](https://www.geeek.org).
+* 🛠️ **Code & security:** I contribute to open-source projects and practice ethical hacking.
+* 📸 **Images & the great outdoors:** Into photography and FPV drone flying, I also love hitting the road. My site [Apollovan](https://apollovan.fr) chronicles my road trips in a converted van.
 
-Et quand il est vraiment temps de débrancher les écrans, je fais de la musique.
+And when it's really time to unplug from the screens, I make music.
 
-> 🖥️ **Astuce :** `cat projects.md` pour explorer mes projets.
+> 🖥️ **Tip:** `cat projects.md` to explore my projects.

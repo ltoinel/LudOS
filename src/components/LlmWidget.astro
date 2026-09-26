@@ -34,7 +34,7 @@
   const bar = document.getElementById('llm-bar');
 
   // Group digits with a thin space (1 240) — easier to read at a glance.
-  const fmt = (n: number): string => n.toLocaleString('fr-FR');
+  const fmt = (n: number): string => n.toLocaleString('en-US');
 
   if (el && modelEl && inEl && outEl && toks && prog && bar) {
     subscribeLlm((s: LlmState) => {

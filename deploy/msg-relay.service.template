@@ -1,0 +1,27 @@
+# systemd unit for the `msg` email relay (server/msg-server.ts).
+# Rendered by `npm run deploy:config` into deploy/generated/, then:
+#
+#   sudo cp deploy/generated/msg-relay.service /etc/systemd/system/
+#   sudo cp deploy/generated/msg.env {{BASE_DIR}}/msg.env   # then set MSG_TO
+#   sudo systemctl daemon-reload && sudo systemctl enable --now msg-relay
+[Unit]
+Description={{HOST}} msg email relay
+After=network.target postfix.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory={{APP_DIR}}
+EnvironmentFile={{BASE_DIR}}/msg.env
+ExecStart=/usr/bin/node server/msg-server.ts
+Restart=on-failure
+RestartSec=5
+# Light hardening. NoNewPrivileges is deliberately NOT set: Postfix's sendmail
+# hands mail to the setgid `postdrop` helper, which it would break.
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

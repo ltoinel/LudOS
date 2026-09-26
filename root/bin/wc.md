@@ -1,6 +1,7 @@
 ---
 name: wc
 desc: count lines, words and bytes — e.g. wc about.md, ls | wc -l
+page: false
 man: |
   # WC(1)
 

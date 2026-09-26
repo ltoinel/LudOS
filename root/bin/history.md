@@ -1,6 +1,7 @@
 ---
 name: history
 desc: previous commands
+page: false
 man: |
   # HISTORY(1)
 

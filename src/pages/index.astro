@@ -18,10 +18,10 @@ import { latestLastmod } from '../lib/content';
       only visible content and it boots client-side, so without this the `/`
       document carries no real topical text or <h1> for engines. Visually hidden. */
   }
-  <section class="sr-only" aria-label="Présentation">
+  <section class="sr-only" aria-label="About">
     <h1>{site.name} — {site.role} @ {site.company}</h1>
     <p>{site.bio}</p>
-    <h2>Domaines d'expertise</h2>
+    <h2>Areas of expertise</h2>
     <ul>
       {site.knowsAbout.map((k) => <li>{k}</li>)}
     </ul>

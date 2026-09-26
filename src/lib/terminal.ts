@@ -1,5 +1,5 @@
 /**
- * Interactive shell for the ludovic.toinel.com portal.
+ * Interactive shell of the terminal portal.
  *
  * Content and configuration are emitted at build time by `Terminal.astro` as
  * `<script type="application/json">` blocks that this module reads at runtime:
@@ -10,21 +10,26 @@
  * From there it wires up the terminal: command discovery, history, completion,
  * the SSH connection animation, and a draggable / resizable window.
  *
- * Document content (the markdown bodies) stays in French; system/error messages
- * are English. `escapeHtml`, `inline` and `format` are exported so the pure
+ * All user-facing text is English. `escapeHtml`, `inline` and `format` are exported so the pure
  * rendering logic can be unit-tested without a DOM.
  */
 
 import { THEMES, applyTheme, currentTheme } from './themes';
+import { escapeHtml } from './html';
 import { createVfs, vdir, type VDir } from './vfs';
 import { raiseZ, nextCascadeOffset, makeWindowChrome, spawnIframe } from './windows';
-import { parseCommandLine, type Stage } from './shell-parse';
+import { type Stage } from './shell-parse';
+import { createExecutor } from './executor';
+import type { CmdDef } from './commands';
+import type { ShellCfg, ShellCtx } from './shell-ctx';
+import { listWorkers, spawnWorker } from './workers';
 import {
   ensureModel,
   llmChat,
   getLlmState,
   recommendedModels,
   llmModels,
+  llmCatalog,
   cacheList,
   cacheRemove,
   cacheRemoveAll,
@@ -33,27 +38,6 @@ import {
   type EnsureOptions,
   type ChatRequest,
 } from './llm';
-
-/** Configuration injected via `#shell-cfg`. */
-interface Cfg {
-  /** Host shown in prompts and the SSH animation. */
-  host: string;
-  /** User name shown in the prompt as `user@host` (e.g. `guest`). */
-  user: string;
-  /** Absolute home directory (shown as `~`); the shell starts here. */
-  home: string;
-  /** `key -> URL` registry used by the `open` command. */
-  links: Record<string, string>;
-  /** Identity surfaced by `whoami`, mirrored from `site.config.ts`. */
-  profile?: {
-    name: string;
-    role: string;
-    company: string;
-    nationality: string;
-    knowsAbout: string[];
-    url: string;
-  };
-}
 
 /** Whether the user prefers reduced motion — disables animations and delays. */
 const reduce =
@@ -142,6 +126,31 @@ export async function bootTerminal(): Promise<void> {
   initTerminal(document.getElementById('ssh'));
 }
 
+/** A running shell window that can execute a command line on request. */
+interface ShellHandle {
+  win: HTMLElement;
+  /** Runs `line` as if typed; false when the shell is busy. */
+  submit: (line: string) => boolean;
+}
+
+/** Every initialized shell window, and the one the visitor used last. */
+const shells: ShellHandle[] = [];
+let activeShell: ShellHandle | null = null;
+
+/**
+ * Runs a command line in the shell window the visitor used last (the main one
+ * by default) — the entry point of the dock's `help` / `ask AI` tiles. A closed
+ * or minimized window is brought back first. Returns false when no shell is
+ * available or it is busy running another command.
+ */
+export function runCommandLine(line: string): boolean {
+  const alive = (s: ShellHandle | null): s is ShellHandle => Boolean(s && s.win.isConnected);
+  const shell = alive(activeShell) ? activeShell : (shells.find(alive) ?? null);
+  if (!shell) return false;
+  shell.win.classList.remove('closed', 'minimized');
+  return shell.submit(line);
+}
+
 /**
  * Opens an additional, independent shell window by cloning the original one's
  * markup. The clone shares the page's command registry / filesystem but keeps
@@ -175,11 +184,8 @@ export function spawnTerminal(): void {
   initTerminal(win, false);
 }
 
-/** Escapes the HTML-sensitive characters before injecting into the DOM. */
-export const escapeHtml = (s: string): string =>
-  s.replace(/[&<>"]/g, (c) =>
-    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
-  );
+// Re-exported so the rendering helpers below stay importable from one place.
+export { escapeHtml };
 
 /**
  * Formats an inline span of text (light markdown -> HTML).
@@ -258,12 +264,15 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   // (Window chrome — drag, raise-to-front, controls — is wired by the shared
   // `makeWindowChrome` near the end of this function.)
 
-  const cfg = readJSON<Cfg>('shell-cfg', {
+  const cfg = readJSON<ShellCfg>('shell-cfg', {
     host: 'localhost',
     user: 'user',
     home: '/home/user',
     links: {},
   });
+  // The host is dynamic: the domain actually serving the page (a mirror, a
+  // preview deploy, localhost in dev), falling back to the configured one.
+  if (typeof location !== 'undefined' && location.hostname) cfg.host = location.hostname;
 
   /** Coarse pointer (touch) — used to skip auto-focus that would pop the keyboard. */
   const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
@@ -280,7 +289,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
 
   /** Colored HTML prompt for the current user & directory (echo + input line). */
   function promptHtml(): string {
-    // Always `user@host` (e.g. `guest@ludovic.toinel.com`); root swaps the name
+    // Always `user@host` (e.g. `guest@example.com`); root swaps the name
     // and turns the `$` symbol into a red `#`.
     const user = `${vfs.isRoot() ? 'root' : cfg.user}@${cfg.host}`;
     const sym = vfs.isRoot()
@@ -302,6 +311,12 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
    * commands (via `ctx.ask`) — e.g. the `boot` yes/no connection confirmation.
    */
   function readLine(question: string, secret = false): Promise<string> {
+    // A headless run (`ctx.capture`, e.g. the denree agent) has nobody at the
+    // keyboard: fail fast instead of waiting forever for a line (think `bc`
+    // with no argument, which would otherwise open its interactive prompt).
+    if (out().errSink) {
+      return Promise.reject(new Error('interactive input is not available here'));
+    }
     secretRead = secret;
     promptEl.innerHTML = `<span class="out">${escapeHtml(question)}</span>&nbsp;`;
     input.value = '';
@@ -342,27 +357,22 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
 
   /* ----------------------------- output ----------------------------- */
 
-  // When set, stdout is captured into this buffer instead of the screen — used
-  // by `>` / `>>` redirection and by `|` pipes (a stage's stdout becomes the
-  // next stage's `ctx.stdin`). `error` (stderr) is never captured. The captured
-  // text comes from `print` / `raw` / `line` and from any direct `append` (so a
-  // command that renders its own HTML, like `grep`, still pipes/redirects as
-  // plain text).
-  let captureBuf: string[] | null = null;
-  // When set, stderr (`printErr`) is recorded here instead of painted — used by
-  // the headless `captureLine` (Denree) so an error message is returned, not
-  // splashed onto the visible terminal during a programmatic run.
-  let errSink: string[] | null = null;
-  // Piped input handed to the running command via `ctx.stdin` (empty if none).
-  let currentStdin = '';
+  // Pipeline execution (`|`, `>`, `>>`, headless capture) lives in the
+  // executor (./executor.ts); `out.capture` / `out.errSink` tell the printers
+  // below whether to paint or to record. The executor is created once the
+  // command registry exists (see "execution").
+  // eslint-disable-next-line prefer-const -- assigned after the registry below
+  let executor: ReturnType<typeof createExecutor>;
+  const out = (): ReturnType<typeof createExecutor>['state'] => executor.state;
 
   /**
    * If stdout is being captured, records `text` (the command's own string, not
    * its rendered HTML) and reports `true` so the caller skips painting it.
    */
   function captured(text: string): boolean {
-    if (!captureBuf) return false;
-    captureBuf.push(text);
+    const buf = out().capture;
+    if (!buf) return false;
+    buf.push(text);
     return true;
   }
 
@@ -376,8 +386,9 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     d.innerHTML = html;
     // While capturing (redirect / pipe), keep the node off-screen and record its
     // text so commands that emit HTML directly still produce pipeable stdout.
-    if (captureBuf) {
-      captureBuf.push(d.textContent || '');
+    const buf = out().capture;
+    if (buf) {
+      buf.push(d.textContent || '');
       return d;
     }
     output.appendChild(d);
@@ -410,8 +421,9 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
 
   /** Prints an error line (red, escaped text), or records it when capturing stderr. */
   function printErr(text: string): void {
-    if (errSink) {
-      errSink.push(text);
+    const sink = out().errSink;
+    if (sink) {
+      sink.push(text);
       return;
     }
     append(`<div class="ln" style="color:#ff6b6b">${escapeHtml(text)}</div>`);
@@ -484,18 +496,6 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     return Object.keys(ch).find((f) => ch[f].type === 'file' && f.replace(/\.[^.]+$/, '') === name);
   }
 
-  /** Definition discovered from a `root/bin/*.md` file. */
-  interface CmdDef {
-    name: string;
-    desc?: string;
-    /** Alternate names that resolve to this same command (e.g. `cls` → `clear`). */
-    alias?: string[];
-    /** Authored manual page (markdown), shown by `man <name>`. */
-    man?: string;
-    js?: string;
-    body: string;
-  }
-
   // Commands are parsed at build time and injected as `#shell-commands`.
   const cmdDefs = readJSON<CmdDef[]>('shell-commands', []);
 
@@ -506,13 +506,13 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
    * API object handed to a dynamic command's `js`. Authored content is trusted,
    * so the code runs via `new AsyncFunction` (needs `unsafe-eval` under a CSP).
    */
-  function makeCtx(args: string[], body: string) {
+  function makeCtx(args: string[], body: string): ShellCtx {
     return {
       args,
       body,
       cfg,
       // Text piped in from a previous pipeline stage (`prev | cmd`); '' if none.
-      stdin: currentStdin,
+      stdin: out().stdin,
       history: cmdHistory,
       commands: cmdDefs.map((d) => ({
         name: d.name,
@@ -572,7 +572,10 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       exec: (name: string, a: string[] = []) => commands[name]?.run(a),
       // Runs a full command line headlessly and returns its captured stdout/stderr
       // as text — used by the Denree agent to read a command's output as data.
-      capture: (line: string) => captureLine(line),
+      capture: (line: string) => executor.capture(line),
+      worker: (url: string | URL, name?: string, opts?: WorkerOptions) =>
+        spawnWorker(url, name, opts),
+      workers: () => listWorkers(),
       // The single, central LLM manager (src/lib/llm.ts) wired to this terminal:
       // `ensure` asks for consent in the shell and draws a progress bar; `chat`
       // routes generation through the manager so the top-right widget stays in
@@ -580,6 +583,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       llm: {
         state: () => getLlmState(),
         models: () => llmModels(),
+        catalog: () => llmCatalog(),
         recommended: () => recommendedModels(),
         cacheList: () => cacheList(),
         cacheRemove: (id: string) => cacheRemove(id),
@@ -628,7 +632,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
     arg: string,
     body: string,
-  ) => (ctx: ReturnType<typeof makeCtx>) => Promise<void>;
+  ) => (ctx: ShellCtx) => Promise<void>;
 
   for (const def of cmdDefs) {
     if (!def.name) continue;
@@ -652,42 +656,27 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
 
   /* --------------------------- execution ---------------------------- */
 
-  /** Runs one pipeline stage; returns its captured stdout, or null when not captured. */
-  async function runStage(stage: Stage, capture: boolean): Promise<string[] | null> {
-    const cmd = commands[stage.name];
-    const buf = capture ? [] : null;
-    captureBuf = buf;
-    try {
-      if (cmd) {
-        await cmd.run(stage.args);
-      } else {
-        // Not a command: try the path as a file (implicit `cat`) in the current dir.
-        const res = vfs.readPath(stage.name);
-        if (res.error) printErr(`${stage.name}: command not found — type \`help\``);
-        else if ((res.name || '').endsWith('.md')) printBlock(res.content as string);
-        else printRaw(res.content as string);
-      }
-    } finally {
-      captureBuf = null;
-    }
-    return buf;
-  }
-
-  /** Persists a redirection's captured output to the VFS (`>` / `>>`). */
-  function writeRedirect(redirect: { path: string; append: boolean }, lastBuf: string[]): void {
-    let content = lastBuf.join('\n');
-    if (content && !content.endsWith('\n')) content += '\n';
-    if (redirect.append) {
-      const prev = vfs.readPath(redirect.path);
-      if (!prev.error) content = (prev.content ?? '') + content;
-    }
-    const err = vfs.mutate('write', redirect.path, { content });
-    if (err) printErr(err);
-  }
+  executor = createExecutor({
+    runStage: async (stage: Stage) => {
+      const cmd = commands[stage.name];
+      if (cmd) return cmd.run(stage.args);
+      // Not a command: try the path as a file (implicit `cat`) in the current dir.
+      const res = vfs.readPath(stage.name);
+      if (res.error) printErr(`${stage.name}: command not found — type \`help\``);
+      else if ((res.name || '').endsWith('.md')) printBlock(res.content as string);
+      else printRaw(res.content as string);
+    },
+    readFile: (path) => {
+      const res = vfs.readPath(path);
+      return res.error ? null : (res.content ?? '');
+    },
+    writeFile: (path, content) => vfs.mutate('write', path, { content }),
+    printErr,
+  });
 
   /**
-   * Runs a typed line: echo, history, then dispatch to a command, otherwise to
-   * a home document (implicit `cat`), otherwise an error.
+   * Runs a typed line: echo, history, then the pipeline (commands, otherwise a
+   * document as an implicit `cat`, otherwise an error).
    */
   async function run(raw: string): Promise<void> {
     const line = raw.trim();
@@ -703,77 +692,16 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       /* storage full / unavailable — keep going */
     }
 
-    // Parse the line into pipeline stages + an optional trailing redirection
-    // (the pure syntax layer lives in ./shell-parse). Each stage's stdout feeds
-    // the next stage's `ctx.stdin`; the last stage prints to screen (or to the
-    // redirect file). Stderr always shows on screen.
-    const { stages, redirect, error } = parseCommandLine(line);
-    if (error) {
-      printErr(error);
-      return;
-    }
-
     // Fresh abort handle per command, exposed to its `js` via `ctx.signal` and
     // triggered by Ctrl+C (see the keydown handler).
     currentAbort = new AbortController();
-    let lastBuf: string[] | null = null;
-    currentStdin = ''; // first stage has no stdin
     try {
-      for (let i = 0; i < stages.length; i++) {
-        const isLast = i === stages.length - 1;
-        // Capture every non-final stage (its output is piped onward), plus the
-        // final stage when its output is redirected to a file.
-        lastBuf = await runStage(stages[i], !isLast || !!redirect);
-        // The captured stdout becomes the next stage's stdin.
-        currentStdin = lastBuf ? lastBuf.join('\n') : '';
-      }
+      await executor.execute(line);
+    } catch (err) {
+      printErr(`${line.split(/\s/)[0]}: ${(err as Error).message}`);
     } finally {
-      captureBuf = null;
-      currentStdin = '';
       currentAbort = null;
     }
-
-    if (redirect && lastBuf) writeRedirect(redirect, lastBuf);
-  }
-
-  /**
-   * Runs a command line headlessly: every stage is captured (nothing is painted
-   * to the screen, stderr included), and the final stdout is returned as text.
-   * Powers `ctx.capture` (e.g. the `denree` agent reads a command's output as
-   * data). Reuses an outer command's abort signal when present, so Ctrl+C still
-   * cancels.
-   */
-  async function captureLine(
-    raw: string,
-  ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-    const line = (raw || '').trim();
-    if (!line) return { ok: true, stdout: '', stderr: '' };
-    const { stages, redirect, error } = parseCommandLine(line);
-    if (error) return { ok: false, stdout: '', stderr: error };
-
-    const prevAbort = currentAbort;
-    const prevStdin = currentStdin;
-    const errBuf: string[] = [];
-    errSink = errBuf;
-    if (!currentAbort) currentAbort = new AbortController();
-    let lastBuf: string[] | null = null;
-    currentStdin = '';
-    try {
-      for (let i = 0; i < stages.length; i++) {
-        lastBuf = await runStage(stages[i], true); // capture every stage
-        currentStdin = lastBuf ? lastBuf.join('\n') : '';
-      }
-      if (redirect && lastBuf) writeRedirect(redirect, lastBuf);
-    } finally {
-      captureBuf = null;
-      currentStdin = prevStdin;
-      currentAbort = prevAbort;
-      errSink = null;
-    }
-    const stderr = errBuf.join('\n');
-    // A redirected line's stdout went to the file, so report it as empty.
-    const stdout = redirect ? '' : lastBuf ? lastBuf.join('\n') : '';
-    return { ok: !stderr, stdout, stderr };
   }
 
   /* ------------------------- user input ----------------------------- */
@@ -832,6 +760,52 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   // Keep the visible line (and caret position) in sync with the hidden input.
   ['input', 'keyup', 'click', 'select'].forEach((ev) => input.addEventListener(ev, renderInput));
 
+  /**
+   * Ctrl+C while a command runs: aborts `ctx.signal`, which commands honor
+   * (fetch, loops, workers, LLM generation). Sync code can't be pre-empted, so a
+   * command that ignores the signal simply runs on. With text selected, Ctrl+C
+   * stays a plain "copy". Returns true when it interrupted.
+   */
+  const interruptOnCtrlC = (e: KeyboardEvent): boolean => {
+    const isCtrlC = e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'c';
+    if (!isCtrlC || (window.getSelection()?.toString() || '').length) return false;
+    e.preventDefault();
+    append('<div class="ln out">^C</div>');
+    currentAbort?.abort();
+    return true;
+  };
+
+  // While a command runs, the prompt (and its input) is hidden, so it can't hold
+  // the focus: the terminal body takes it instead (see the Enter handler) and
+  // listens for Ctrl+C here. Other keys bubble on, e.g. to a command's own
+  // listener (`q` quits `top`).
+  body.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (busy && !pendingRead && e.target === body) interruptOnCtrlC(e);
+  });
+
+  /**
+   * Runs a line as if the visitor typed it (Enter, a clickable command, a dock
+   * tile). The prompt is hidden while the command runs, so a long-running
+   * command (a model loading, hashcat cracking) doesn't leave a stray, inert
+   * prompt that looks ready for input; an interactive command re-shows the line
+   * itself via `ctx.ask`. The prompt comes back once the command finishes.
+   */
+  async function runTyped(line: string): Promise<void> {
+    busy = true;
+    inputline.hidden = true;
+    // Keep the keyboard on this terminal so Ctrl+C can interrupt the command.
+    body.focus({ preventScroll: true });
+    try {
+      await run(line);
+    } finally {
+      // Always hand the prompt back, even if the command blew up.
+      busy = false;
+      inputline.hidden = false;
+      refreshPrompt(); // the command may have changed the working directory
+      if (!isTouch) input.focus();
+    }
+  }
+
   input.addEventListener('keydown', async (e: KeyboardEvent) => {
     // An interactive `ctx.ask()` read accepts input even while `busy` (boot).
     if (pendingRead) {
@@ -847,14 +821,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       return; // ignore history/completion/shortcuts while reading a line
     }
     if (busy) {
-      // Ctrl+C interrupts the running command — it aborts `ctx.signal`, which
-      // commands honor (fetch, loops, hashcat workers). Sync code can't be
-      // pre-empted, so a command that ignores the signal simply runs on.
-      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'c') {
-        append('<div class="ln out">^C</div>');
-        currentAbort?.abort();
-      }
-      e.preventDefault();
+      if (!interruptOnCtrlC(e)) e.preventDefault();
       return;
     }
     const val = input.value;
@@ -863,18 +830,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     if (e.key === 'Enter') {
       input.value = '';
       renderInput();
-      busy = true;
-      // Hide the prompt while the command runs, so a long-running command (e.g.
-      // webllm loading a model, hashcat cracking) doesn't leave a stray, inert
-      // prompt on screen that looks ready for input. An interactive command
-      // re-shows the line itself via `ctx.ask` (readLine), and it is restored
-      // here once the command finishes.
-      inputline.hidden = true;
-      await run(val);
-      busy = false;
-      inputline.hidden = false;
-      refreshPrompt(); // the command may have changed the working directory
-      input.focus();
+      await runTyped(val);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (hpos > 0) setLine(cmdHistory[--hpos] ?? '');
@@ -927,22 +883,21 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     const t = e.target as HTMLElement;
     if (t.closest('a')) return;
     if ((window.getSelection()?.toString() || '').length) return;
+    // While a command runs the prompt is hidden: focus the body so Ctrl+C works.
     if (!inputline.hidden) input.focus();
+    else body.focus({ preventScroll: true });
   });
 
-  // A man "SEE ALSO" link (`a[data-cmd]`) opens that command's manual in place
-  // rather than navigating away. Returns true when it handled the event.
+  // A command link runs in place rather than navigating away: `a[data-cmd]`
+  // (man "SEE ALSO", the `help` list) opens that command's manual, and
+  // `a[data-run]` runs its whole command line (e.g. `cat about.md`). Returns
+  // true when it handled the event.
   const openManLink = (el: HTMLElement): boolean => {
-    const a = el.closest('a[data-cmd]') as HTMLElement | null;
+    const a = el.closest('a[data-cmd], a[data-run]') as HTMLElement | null;
     if (!a || busy || pendingRead) return false;
-    const name = a.dataset.cmd;
-    if (!name) return false;
-    busy = true;
-    void run(`man ${name}`).then(() => {
-      busy = false;
-      refreshPrompt();
-      if (!isTouch) input.focus();
-    });
+    const line = a.dataset.run || (a.dataset.cmd ? `man ${a.dataset.cmd}` : '');
+    if (!line) return false;
+    void runTyped(line);
     return true;
   };
   output.addEventListener('click', (e: MouseEvent) => {
@@ -967,16 +922,21 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     output.innerHTML = '';
     win.classList.remove('closed');
 
-    // A deep link (e.g. /whoami, reached from the sitemap or a search result)
-    // skips the SSH boot animation. A command page opens its manual (`man
-    // <command>`) instead of executing the command, so the visitor sees what it
-    // does before running it; a document deep link still renders the file
-    // directly. The home page (no slug) — and every spawned window — plays the
-    // full connection sequence + motd.
+    // A deep link (e.g. /cal, reached from the sitemap or a search result)
+    // skips the SSH boot animation. A command page runs the command's `demo`
+    // line when it has one (the tool at work: a calendar, a password…), and
+    // otherwise opens its manual (`man <command>`), so the visitor sees what it
+    // does before running it; a document deep link renders the file directly.
+    // The home page (no slug) — and every spawned window — plays the full
+    // connection sequence + motd.
     const slug = allowDeepLink ? location.pathname.replace(/^\/+|\/+$/g, '') : '';
     const isCommand = Boolean(slug && commands[slug]);
     const isDeepLink = isCommand || Boolean(slug && resolveFile(slug));
-    if (isCommand) await run(`man ${slug}`);
+    const demo = isCommand ? cmdDefs.find((d) => d.name === slug)?.demo : undefined;
+    if (demo) {
+      await run(demo.replaceAll('%HOST%', location.hostname).replaceAll('%URL%', location.origin));
+      sysLine(`→ man ${slug} for the full manual · help for every command`);
+    } else if (isCommand) await run(`man ${slug}`);
     else if (isDeepLink) await run(slug);
     else if (commands['boot']) await commands['boot'].run([]);
 
@@ -1006,6 +966,24 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   // Drag, raise-to-front, minimize / maximize and the title-bar buttons — the
   // single window-chrome mechanism shared with stand-alone windows (`iframed`).
   makeWindowChrome(win, closeWin);
+
+  // Register this window for `runCommandLine` (the dock tiles); the window the
+  // visitor last clicked or typed in becomes the target.
+  const handle: ShellHandle = {
+    win,
+    submit: (line) => {
+      if (busy || pendingRead) return false;
+      void runTyped(line);
+      return true;
+    },
+  };
+  shells.push(handle);
+  activeShell ??= handle;
+  const markActive = (): void => {
+    activeShell = handle;
+  };
+  win.addEventListener('pointerdown', markActive);
+  win.addEventListener('focusin', markActive);
 
   boot();
 }

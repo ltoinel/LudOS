@@ -1,0 +1,20 @@
+---
+// Dock tile starting the local AI agent (`denree`) in the active shell; with no
+// goal, denree asks for the question in the terminal.
+import { Icon } from 'astro-icon/components';
+---
+
+<button
+  id="dock-ask-ai"
+  type="button"
+  aria-label="Ask the local AI agent (denree)"
+  class="dock-item needs-js"
+>
+  <Icon name="lucide:sparkles" />
+  <span class="dock-label">ask AI</span>
+</button>
+
+<script>
+  import { runCommandLine } from '../lib/terminal';
+  document.getElementById('dock-ask-ai')?.addEventListener('click', () => runCommandLine('denree'));
+</script>

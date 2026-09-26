@@ -13,5 +13,10 @@ export default defineConfig({
   integrations: [icon()],
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      // The WebLLM engine is a single ~6 MB lazy chunk, fetched only when a
+      // command needs a model — expected, so don't warn about it.
+      chunkSizeWarningLimit: 7000,
+    },
   },
 });

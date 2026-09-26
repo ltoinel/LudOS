@@ -1,5 +1,5 @@
 /**
- * Curated Unsplash wallpapers for the `fond` dock button (background switcher).
+ * Curated Unsplash wallpapers for the `wall` dock button (background switcher).
  *
  * Each `url` is a *direct* Unsplash CDN link (`images.unsplash.com/photo-…`), so
  * no API key / rate limit is involved — the button just cycles this list. Edit

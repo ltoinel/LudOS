@@ -1,6 +1,7 @@
 ---
 name: echo
 desc: echo the text
+page: false
 man: |
   # ECHO(1)
 

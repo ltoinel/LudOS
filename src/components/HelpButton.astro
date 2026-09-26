@@ -1,0 +1,20 @@
+---
+// Dock tile running `help` in the active shell: a clickable command palette for
+// visitors who would rather click than type.
+import { Icon } from 'astro-icon/components';
+---
+
+<button
+  id="dock-help"
+  type="button"
+  aria-label="Show every command (help)"
+  class="dock-item needs-js"
+>
+  <Icon name="lucide:circle-help" />
+  <span class="dock-label">help</span>
+</button>
+
+<script>
+  import { runCommandLine } from '../lib/terminal';
+  document.getElementById('dock-help')?.addEventListener('click', () => runCommandLine('help'));
+</script>

@@ -1,5 +1,5 @@
 NAME="LudOs"
-PRETTY_NAME="LudOs phosphor 1.0"
+PRETTY_NAME="LudOs %VERSION%"
 ID=ludos
-VERSION="1.0 (phosphor)"
-HOME_URL="https://ludovic.toinel.com"
+VERSION="%VERSION%"
+HOME_URL="%URL%"

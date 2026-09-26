@@ -1,6 +1,7 @@
 ---
 name: boot
 desc: replay the SSH connection
+page: false
 man: |
   # BOOT(1)
 
@@ -52,7 +53,7 @@ js: |
       `<div class="ln out">${ctx.escape(question)} <span class="cmd">${ctx.escape(answer)}</span></div>`,
     );
 
-    if (!['yes', 'y', 'oui', 'o'].includes(answer)) {
+    if (!['yes', 'y'].includes(answer)) {
       ctx.sysLine('Host key verification failed.');
       ctx.line('Connection refused. Click ⏻ reconnect to try again.');
       ctx.exit(); // closes the window and reveals the reconnect button

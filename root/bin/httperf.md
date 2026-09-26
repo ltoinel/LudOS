@@ -24,6 +24,16 @@ man: |
   -n num          total requests (1 to 50, default 10)
   -c concurrency  requests in flight at once (1 to 10, default 1)
 
+  ## USE CASES
+  - compare the response time of two hosts or two CDNs from your network;
+  - get a feel for the latency distribution: p90 and p95 show the slow
+    requests that the average hides;
+  - see how a site behaves with a few concurrent requests (-c).
+
+  ## NOTES
+  Be gentle: this is a quick benchmark from one browser, not a load-testing
+  tool, and it must only target sites you are allowed to test.
+
   ## EXAMPLES
   httperf toinel.com
   httperf -n 20 -c 4 geeek.org

@@ -1,6 +1,7 @@
 ---
 name: cat
 desc: show a file — e.g. cat about.md, cat -n notes.txt
+page: false
 man: |
   # CAT(1)
 

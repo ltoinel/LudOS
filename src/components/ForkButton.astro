@@ -1,0 +1,21 @@
+---
+// "Fork me on GitHub" as a dock tile: links to the portal's source repository
+// (`site.sourceUrl`); hidden when that setting is empty.
+import { Icon } from 'astro-icon/components';
+import { site } from '../site.config.ts';
+---
+
+{
+  site.sourceUrl && (
+    <a
+      class="dock-item"
+      href={site.sourceUrl}
+      target="_blank"
+      rel="noopener"
+      aria-label="Fork me on GitHub — the source code of this terminal"
+    >
+      <Icon name="lucide:github" />
+      <span class="dock-label">fork me</span>
+    </a>
+  )
+}

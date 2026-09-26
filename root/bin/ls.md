@@ -1,6 +1,7 @@
 ---
 name: ls
 desc: list directory contents
+index: false
 man: |
   # LS(1)
 

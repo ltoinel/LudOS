@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { routes, lastmod, latestLastmod } from '../lib/content';
+import { indexedRoutes, lastmod, latestLastmod } from '../lib/content';
 import { site } from '../site.config.ts';
 
 // Single sitemap.xml: the home page plus one URL per deep-linkable command /
@@ -11,7 +11,7 @@ export const GET: APIRoute = () => {
   const entries: { loc: string; lastmod: string | null }[] = [
     // Home: most recent change across all listed pages.
     { loc: `${BASE}/`, lastmod: latestLastmod() },
-    ...routes.map((r) => ({ loc: `${BASE}/${r.slug}/`, lastmod: lastmod(r.slug) })),
+    ...indexedRoutes.map((r) => ({ loc: `${BASE}/${r.slug}/`, lastmod: lastmod(r.slug) })),
   ];
   const body =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +

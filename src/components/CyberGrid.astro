@@ -1,0 +1,79 @@
+---
+// Decorative "cyberpunk" background for the cyberpunk theme: a neon
+// perspective grid scrolling toward the viewer, a glowing horizon and the odd
+// glitch band. Sits behind the windows; only drawn while that theme is active
+// (see global.css), and never under prefers-reduced-motion.
+---
+
+<canvas class="fx-cyber" aria-hidden="true"></canvas>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>('.fx-cyber');
+  const ctx = canvas?.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (canvas && ctx && !reduce) {
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    let last = 0;
+    let offset = 0;
+    const tick = (now: number) => {
+      requestAnimationFrame(tick);
+      // Idle unless the cyberpunk theme is on and the tab is visible.
+      if (document.documentElement.dataset.theme !== 'cyberpunk' || document.hidden) return;
+      if (now - last < 33) return; // ~30 fps
+      last = now;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const horizon = h * 0.55;
+      ctx.clearRect(0, 0, w, h);
+
+      // Horizon glow.
+      const glow = ctx.createLinearGradient(0, horizon - 120, 0, horizon + 40);
+      glow.addColorStop(0, 'rgba(255, 42, 109, 0)');
+      glow.addColorStop(0.75, 'rgba(255, 42, 109, 0.35)');
+      glow.addColorStop(1, 'rgba(0, 240, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, horizon - 120, w, 160);
+
+      // Receding horizontal lines (spacing grows toward the viewer).
+      offset = (offset + 0.012) % 1;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 18; i++) {
+        const p = (i + offset) / 18;
+        const y = horizon + (h - horizon) * p * p;
+        ctx.strokeStyle = `rgba(0, 240, 255, ${0.08 + 0.5 * p})`;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+      // Vertical lines converging on a vanishing point.
+      const cx = w / 2;
+      for (let i = -24; i <= 24; i++) {
+        const xb = cx + i * (w / 16);
+        ctx.strokeStyle = 'rgba(255, 42, 109, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(cx + i * 6, horizon);
+        ctx.lineTo(xb, h);
+        ctx.stroke();
+      }
+
+      // Occasional glitch band: a displaced strip of neon noise.
+      if (Math.random() > 0.94) {
+        const y = Math.random() * h;
+        const bh = 2 + Math.random() * 10;
+        ctx.fillStyle =
+          Math.random() > 0.5 ? 'rgba(252, 238, 10, 0.18)' : 'rgba(0, 240, 255, 0.18)';
+        ctx.fillRect(Math.random() * w * 0.3, y, w * (0.3 + Math.random() * 0.7), bh);
+      }
+    };
+    requestAnimationFrame(tick);
+  }
+</script>

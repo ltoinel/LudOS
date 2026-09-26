@@ -16,6 +16,24 @@ man: |
   registrar, the key dates (registration, expiration, last update), the
   status flags, the name servers and the DNSSEC state.
 
+  ## HOW IT WORKS
+  RDAP (Registration Data Access Protocol) is the IETF standard that replaces
+  the old text-based WHOIS with structured JSON over HTTPS. rdap.org
+  redirects each query to the authoritative registry of the domain's TLD, so
+  the data comes straight from the source; the command then extracts the
+  useful fields.
+
+  ## USE CASES
+  - check when a domain expires, or when it was registered;
+  - find the registrar to contact about a domain;
+  - verify a domain's name servers or DNSSEC status after a migration;
+  - spot freshly registered domains, often a phishing signal.
+
+  ## NOTES
+  Personal contact details are usually redacted (GDPR). Query the registered
+  domain (example.com), not a subdomain (www.example.com). A few ccTLDs do not
+  offer RDAP yet.
+
   ## EXAMPLES
   whois toinel.com
   whois github.com

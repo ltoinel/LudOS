@@ -1,5 +1,6 @@
 ---
-// macOS-style dock: the window controls as icon tiles, centered at the bottom,
+// macOS-style dock: shortcuts (help palette, the AI agent), the window controls
+// and the "fork me" source link as icon tiles, centered at the bottom,
 // with hover magnification and a tooltip label. The three buttons keep their own
 // ids/scripts — they are just restyled as `.dock-item`s and laid out as direct
 // siblings here so the neighbour-magnification CSS can reach them.
@@ -7,11 +8,17 @@ import NewShellButton from './NewShellButton.astro';
 import ThemeToggle from './ThemeToggle.astro';
 import WallpaperButton from './WallpaperButton.astro';
 import FullscreenButton from './FullscreenButton.astro';
+import ForkButton from './ForkButton.astro';
+import HelpButton from './HelpButton.astro';
+import AskAiButton from './AskAiButton.astro';
 ---
 
 <nav class="dock font-mono" aria-label="Dock">
+  <HelpButton />
+  <AskAiButton />
   <NewShellButton />
   <ThemeToggle />
   <WallpaperButton />
   <FullscreenButton />
+  <ForkButton />
 </nav>

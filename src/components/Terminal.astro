@@ -1,12 +1,18 @@
 ---
-import { site, openLinks } from '../site.config.ts';
+import { site, openLinks, siteHost } from '../site.config.ts';
+import pkg from '../../package.json';
 
 // Runtime config injected into the client shell (read back via #shell-cfg). It is
 // tiny, so it stays inline; the large filesystem + command registry are fetched
 // from /shell-fs.json and /shell-commands.json (cached, shared across pages).
 const cfg = {
   ...site.shell,
+  // Build-time host (from `site.url`); the client swaps in the domain actually
+  // serving the page (see initTerminal).
+  host: siteHost,
   links: openLinks,
+  // Release shown by the boot banner / `uname` (the package.json version).
+  version: pkg.version,
   // Identity surfaced by the `whoami` command — mirrored from the site config so
   // there is a single source of truth.
   profile: {
@@ -21,7 +27,7 @@ const cfg = {
 const safe = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
 ---
 
-<section class="ssh-win needs-js" id="ssh" aria-label={`Terminal interactif — ${site.shell.host}`}>
+<section class="ssh-win needs-js" id="ssh" aria-label={`Interactive terminal — ${siteHost}`}>
   <header class="ssh-bar" id="ssh-bar">
     <span class="ssh-dots">
       <button
@@ -29,25 +35,25 @@ const safe = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
         class="ssh-ctl"
         data-act="close"
         style="background:#ff5f56"
-        aria-label="Fermer la session"></button>
+        aria-label="Close the session"></button>
       <button
         type="button"
         class="ssh-ctl"
         data-act="min"
         style="background:var(--amber)"
-        aria-label="Réduire"></button>
+        aria-label="Minimize"></button>
       <button
         type="button"
         class="ssh-ctl"
         data-act="max"
         style="background:var(--green)"
-        aria-label="Agrandir / restaurer"></button>
+        aria-label="Maximize / restore"></button>
     </span>
     <span class="ssh-title">ssh — {site.shell.user}: ~</span>
     <span class="ssh-status"><span class="ssh-led"></span> connected</span>
   </header>
 
-  <div class="ssh-body" id="ssh-body" role="log" aria-live="polite">
+  <div class="ssh-body" id="ssh-body" role="log" aria-live="polite" tabindex="-1">
     <div class="ssh-output" id="ssh-output"></div>
     <div class="ssh-inputline" id="ssh-inputline" hidden>
       <span class="ssh-prompt" id="ssh-prompt"></span><span
@@ -62,7 +68,7 @@ const safe = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
         autocapitalize="off"
         autocorrect="off"
         spellcheck="false"
-        aria-label="Saisir une commande"
+        aria-label="Type a command"
       />
     </div>
   </div>

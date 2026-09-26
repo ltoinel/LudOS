@@ -1,6 +1,7 @@
 ---
 name: grep
 desc: search text in files — e.g. grep -rn ssh .
+page: false
 man: |
   # GREP(1)
 

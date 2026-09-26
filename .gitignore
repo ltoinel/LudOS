@@ -4,7 +4,12 @@ node_modules/
 .env
 .env.production
 .claude/
-vendor/
-push.config.php
 src/site.config.ts
 data/
+msg.env
+# Legacy Web Push secrets (backend removed) — delete the local file.
+push.config.php
+coverage/
+reports/
+deploy/generated/
+.assets-archive/

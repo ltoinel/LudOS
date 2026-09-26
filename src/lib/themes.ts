@@ -9,7 +9,7 @@
  *
  * Client-only: these functions touch `document` / `localStorage`.
  */
-export const THEMES = ['green', 'amber', 'ice', 'synthwave', 'white', 'red'] as const;
+export const THEMES = ['green', 'amber', 'ice', 'synthwave', 'cyberpunk', 'white', 'red'] as const;
 export type Theme = (typeof THEMES)[number];
 
 const isTheme = (s: string | undefined): s is Theme =>

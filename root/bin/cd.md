@@ -1,6 +1,7 @@
 ---
 name: cd
 desc: change directory — e.g. cd /etc, cd .. or cd ~
+page: false
 man: |
   # CD(1)
 

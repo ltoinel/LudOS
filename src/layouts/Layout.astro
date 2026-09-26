@@ -1,8 +1,9 @@
 ---
 import MatrixRain from '../components/MatrixRain.astro';
+import CyberGrid from '../components/CyberGrid.astro';
 import JsonLd from '../components/JsonLd.astro';
 import { site } from '../site.config.ts';
-import { routes } from '../lib/content';
+import { indexedRoutes } from '../lib/content';
 import '../styles/global.css';
 
 interface Props {
@@ -12,8 +13,10 @@ interface Props {
   breadcrumb?: string;
   /** Last-modified date (YYYY-MM-DD) for structured data / `article:modified_time`. */
   dateModified?: string | null;
-  /** Keep the page out of the index (e.g. the 404 page). */
+  /** Keep the page out of the index (the 404, thin command pages). */
   noindex?: boolean;
+  /** The 404 page: no canonical URL and no WebPage structured data. */
+  notFound?: boolean;
 }
 
 const {
@@ -22,6 +25,7 @@ const {
   breadcrumb,
   dateModified,
   noindex = false,
+  notFound = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, site.url).href;
@@ -45,7 +49,8 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/favicon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="canonical" href={canonical} />
+    {/* The 404 must not declare itself canonical. */}
+    {!notFound && <link rel="canonical" href={canonical} />}
 
     <title>{title}</title>
     <meta name="title" content={title} />
@@ -107,7 +112,7 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
     />
 
     <!-- schema.org structured data -->
-    <JsonLd title={title} breadcrumb={breadcrumb} dateModified={dateModified} />
+    <JsonLd title={title} breadcrumb={breadcrumb} dateModified={dateModified} notFound={notFound} />
 
     <!-- Anti-FOUC: flag JS (reveals the terminal) and apply the saved theme
          before first paint. Green (the default) carries no `data-theme`; any
@@ -121,13 +126,15 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
   </head>
 
   <body>
-    <!-- Optional Unsplash wallpaper (toggled by the dock's `fond` button), behind
+    <!-- Optional Unsplash wallpaper (toggled by the dock's `wall` button), behind
          everything; the CRT effects layer on top of it. -->
     <div class="fx-wallpaper" id="fx-wallpaper" aria-hidden="true"></div>
     <a class="wp-credit" id="wp-credit" target="_blank" rel="noopener noreferrer" hidden></a>
 
     <!-- Matrix digital-rain background (green theme) -->
     <MatrixRain />
+    <!-- Neon grid background (cyberpunk theme) -->
+    <CyberGrid />
 
     <!-- Full-screen effects (purely decorative) -->
     <div class="fx-overlay fx-grain" aria-hidden="true"></div>
@@ -143,10 +150,10 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
          (html:not(.js) .ssh-win in global.css). -->
     <noscript>
       <section class="noscript-fallback">
-        <h1>{site.name}</h1>
+        <p class="ns-name">{site.name}</p>
         <p class="ns-role">{site.role} @ {site.company}</p>
         <p>{site.tagline}</p>
-        <nav class="ns-links" aria-label="Liens">
+        <nav class="ns-links" aria-label="Links">
           {
             site.links.map((l) => (
               <a href={l.url} rel="noopener">
@@ -162,10 +169,10 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
          sitemap. The terminal is keyboard-driven (no clickable links), so without
          this every command/document page would be an orphan for crawlers and
          screen readers. Visually hidden (.sr-only); fully indexable & accessible. -->
-    <nav class="sr-only" aria-label="Plan du site">
-      <a href="/">accueil</a>
+    <nav class="sr-only" aria-label="Site map">
+      <a href="/">home</a>
       {
-        routes.map((r) => (
+        indexedRoutes.map((r) => (
           <a href={`/${r.slug}/`} title={r.desc}>
             {r.title}
           </a>
@@ -176,14 +183,14 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
     <!-- Update toast: shown when a new service worker is waiting (i.e. the site
          was redeployed with a new build version, see src/pages/sw.js.ts). -->
     <div id="sw-toast" role="status" aria-live="polite" hidden>
-      <span>Nouvelle version disponible</span>
-      <button type="button" id="sw-reload">Recharger</button>
+      <span>New version available</span>
+      <button type="button" id="sw-reload">Reload</button>
     </div>
 
     <!-- Register the service worker: caches the shell data (shared across
-         navigations) and enables Web Push. Best-effort, after load. When a new
-         worker finishes installing while one is already in control, surface the
-         toast; clicking "Recharger" tells it to skipWaiting, then reloads. -->
+         navigations). Best-effort, after load. When a new worker finishes
+         installing while one is already in control, surface the toast; clicking
+         "Reload" tells it to skipWaiting, then reloads. -->
     <script is:inline>
       if ('serviceWorker' in navigator) {
         addEventListener('load', () => {

@@ -1,6 +1,7 @@
 ---
 name: base64
 desc: encode/decode base64 — e.g. base64 hello, base64 -d aGVsbG8=
+demo: base64 Hello, world!
 man: |
   # BASE64(1)
 
@@ -17,6 +18,21 @@ man: |
 
   ## OPTIONS
   -d, --decode   decode the input instead of encoding it
+
+  ## HOW IT WORKS
+  Base64 represents binary data with 64 printable characters (A–Z, a–z, 0–9,
+  + and /), three bytes becoming four characters, with = as padding. Text is
+  first turned into UTF-8 bytes, so accents and emoji encode and decode
+  correctly, unlike naive browser btoa() calls.
+
+  ## USE CASES
+  - read an encoded value from an API response, an e-mail or a config file;
+  - build an HTTP Basic Authorization header (user:password);
+  - inspect data URLs or Kubernetes secrets.
+
+  ## NOTES
+  Base64 is an encoding, not encryption: anyone can decode it. The base64url
+  variant used in JWTs replaces + and / with - and _ (see jwt).
 
   ## EXAMPLES
   base64 hello

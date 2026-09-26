@@ -1,5 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  // public/ holds prebuilt third-party bundles (6 MB WebLLM) — type-checking
+  // them is pointless and exhausts astro check's memory.
+  "exclude": ["dist", "public"]
 }

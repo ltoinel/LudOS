@@ -1,6 +1,7 @@
 ---
 name: iframed
 desc: open a URL in an in-page window — e.g. iframed https://example.com
+index: false
 man: |
   # IFRAMED(1)
 

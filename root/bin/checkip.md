@@ -1,6 +1,7 @@
 ---
 name: checkip
 desc: show your public IP address
+demo: checkip
 man: |
   # CHECKIP(1)
 
@@ -15,6 +16,23 @@ man: |
   approximate geolocation (city, country, network operator) via an
   online API. If that fails, a fallback service returns at least the IP
   address.
+
+  ## HOW IT WORKS
+  The page asks ipapi.co for the address your requests come from, together
+  with its geolocation: city, region, country and the network
+  operator. If that service is unreachable or rate-limited, it falls back to
+  ipify, which only returns the bare address. Both are called directly from
+  your browser over HTTPS.
+
+  ## USE CASES
+  - check which public IP address a VPN, proxy or mobile hotspot gives you;
+  - confirm the country a website sees you in (geo-blocking, pricing);
+  - grab your address quickly to allow it in a firewall or a server ACL.
+
+  ## NOTES
+  Geolocation of an IP address is approximate: it usually points to your
+  provider's network hub, not to your exact location. Behind a VPN, the
+  address and place shown are those of the VPN exit server.
 
   ## EXAMPLES
   checkip

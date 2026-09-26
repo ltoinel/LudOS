@@ -18,6 +18,25 @@ man: |
   Decoding happens entirely in your browser: the signature is NOT
   verified and nothing is sent anywhere.
 
+  ## HOW IT WORKS
+  A JSON Web Token is three base64url segments separated by dots: a header
+  (the signing algorithm, the key id), a payload (the claims) and a signature.
+  The command decodes the first two and pretty-prints them, then converts the
+  standard time claims — issued at (iat), not before (nbf), expiration (exp) —
+  to readable dates and tells whether the token is still valid.
+
+  ## USE CASES
+  - inspect an access or ID token from an OAuth 2.0 / OpenID Connect flow;
+  - debug why an API rejects a token (expired, wrong audience or issuer);
+  - check which scopes, roles or tenant a token carries.
+
+  ## SECURITY
+  A JWT is signed, not encrypted: anyone holding it can read its claims. Since
+  this decoder never verifies the signature, do not trust a token's content
+  just because it decodes. Tokens are secrets while they are valid — this page
+  never sends them anywhere, but avoid pasting production tokens in tools that
+  do.
+
   ## EXAMPLES
   jwt eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0In0.xxxxx
 

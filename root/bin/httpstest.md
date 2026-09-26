@@ -26,6 +26,15 @@ man: |
   suites or certificate chain — that needs a server-side scanner. For that
   full audit, httpstest prints an SSL Labs link.
 
+  ## USE CASES
+  - check your own site's security headers after a deployment;
+  - compare the HTTPS configuration of several sites;
+  - get a quick grade and the link to a full server-side SSL test.
+
+  ## NOTES
+  A fresh Observatory scan can take several seconds; the grade reflects the
+  HTTP headers only, not the TLS setup (use the SSL Labs link for that).
+
   ## EXAMPLES
   httpstest
   httpstest toinel.com
@@ -38,7 +47,7 @@ js: |
   // Target: the given host (any pasted URL is reduced to its hostname), or the
   // current terminal host by default.
   let host = (ctx.args.find((a) => !a.startsWith('-')) || ctx.cfg.host || location.hostname || '').trim();
-  host = host.replace(/^[a-z]+:\/\//i, '').replace(/[\/?#].*$/, '').replace(/:\d+$/, '');
+  host = host.replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').replace(/:\d+$/, '');
   if (!host) { ctx.error('usage: httpstest <host>'); return; }
 
   const row = (k, vHtml) =>
@@ -51,7 +60,7 @@ js: |
 
   // 1) Browser-observable: does the TLS handshake succeed? `no-cors` means we
   //    cannot read the response, but a failed handshake/connection rejects.
-  let reachable = false;
+  let reachable;
   let rtt = 0;
   try {
     const ctrl = new AbortController();

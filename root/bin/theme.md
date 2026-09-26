@@ -1,6 +1,7 @@
 ---
 name: theme
 desc: change the display theme — e.g. theme synthwave
+page: false
 man: |
   # THEME(1)
 
@@ -16,8 +17,9 @@ man: |
   see every available theme. The choice is remembered for future
   visits.
 
-  Green is the default (and the only theme with the Matrix rain
-  background). `crt` is accepted as an alias for `green`.
+  Green is the default, with the Matrix rain background; cyberpunk
+  comes with its own animated neon grid. `crt` is accepted as an alias
+  for `green`.
 
   ## OPTIONS
   -l, --list   list the available themes
@@ -27,6 +29,7 @@ man: |
   amber        amber phosphor
   ice          cyan phosphor
   synthwave    neon magenta / cyan
+  cyberpunk    neon yellow / hot pink, animated neon grid
   white        white phosphor (B&W)
   red          red phosphor
 

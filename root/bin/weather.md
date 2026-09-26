@@ -1,6 +1,7 @@
 ---
 name: weather
 desc: current weather — e.g. weather, weather Tokyo
+index: false
 man: |
   # WEATHER(1)
 

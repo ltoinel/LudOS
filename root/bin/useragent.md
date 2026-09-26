@@ -2,6 +2,7 @@
 name: useragent
 desc: show your browser's user agent
 alias: ua
+demo: useragent
 man: |
   # USERAGENT(1)
 
@@ -20,6 +21,21 @@ man: |
 
   Everything is read locally from the `navigator` object — nothing is
   sent anywhere.
+
+  ## HOW IT WORKS
+  The User-Agent is the header string that identifies your browser, engine
+  and operating system to every website. Because it is long and partly
+  frozen for privacy, modern browsers also expose User-Agent Client Hints
+  (navigator.userAgentData), a structured and more reliable source; the
+  command shows both when available.
+
+  ## USE CASES
+  - tell a support team exactly which browser and version you use;
+  - debug a site that serves a different page to your browser;
+  - check what a privacy extension or a browser setting changes.
+
+  ## PRIVACY
+  Everything is read locally from your browser: nothing is sent or stored.
 
   ## EXAMPLES
   useragent

@@ -1,6 +1,7 @@
 ---
 name: rm
 desc: remove a file or directory — e.g. rm notes.txt, rm -r dir
+page: false
 man: |
   # RM(1)
 

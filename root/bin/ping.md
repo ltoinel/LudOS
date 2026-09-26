@@ -1,6 +1,7 @@
 ---
 name: ping
 desc: HTTP ping a host — e.g. ping toinel.com
+demo: ping %HOST%
 man: |
   # PING(1)
 
@@ -17,6 +18,22 @@ man: |
 
   ## OPTIONS
   -c count   number of requests (1 to 20)
+
+  ## HOW IT WORKS
+  A real ping sends ICMP echo packets, which a web page is not allowed to do.
+  Instead, each probe is an HTTP request to the host in no-cors mode: the
+  browser cannot read the answer, but it can time how long the full round trip
+  takes. That includes DNS, TCP and TLS setup on the first probe, so the first
+  time is usually the highest.
+
+  ## USE CASES
+  - check that a website answers at all, and how fast, from your connection;
+  - compare the latency of several hosts or CDNs;
+  - spot an unstable network: failed probes, or a wide min/max spread.
+
+  ## NOTES
+  Times are HTTP round trips, higher than ICMP ping times for the same host.
+  For a load test with percentiles, see httperf.
 
   ## EXAMPLES
   ping toinel.com

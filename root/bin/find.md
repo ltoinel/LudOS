@@ -1,6 +1,7 @@
 ---
 name: find
 desc: find files by name — e.g. find . -name '*.md'
+page: false
 man: |
   # FIND(1)
 

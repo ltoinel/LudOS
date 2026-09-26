@@ -1,6 +1,7 @@
 ---
 name: date
 desc: date and time
+index: false
 man: |
   # DATE(1)
 
