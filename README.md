@@ -1,24 +1,9 @@
 # Terminal.com
 
-[![CI](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml)
-<!-- badges:dynamic -->
-
-![Test coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen)
-![Shell commands](https://img.shields.io/badge/shell%20commands-62-blueviolet)
-<!-- /badges:dynamic -->
-
-![Astro 5](https://img.shields.io/badge/Astro-5-BC52EE?logo=astro&logoColor=white)
-![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
-![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-5FA04E?logo=nodedotjs&logoColor=white)
-![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success)
-![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00)
-![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml) <!-- badges:dynamic -->![Test coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen) ![Shell commands](https://img.shields.io/badge/shell%20commands-62-blueviolet)<!-- /badges:dynamic --> ![Astro 5](https://img.shields.io/badge/Astro-5-BC52EE?logo=astro&logoColor=white) ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white) ![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-5FA04E?logo=nodedotjs&logoColor=white) ![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success) ![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00) ![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Personal portal — **[Astro](https://astro.build) + [Tailwind CSS](https://tailwindcss.com) v4**.
-Static site, **terminal / phosphor aesthetic**, zero framework JS, with built-in SEO
-and schema.org structured data. Config-driven and reusable: every site-specific
+Static site, **terminal / phosphor aesthetic**, zero framework JS. Config-driven and reusable: every site-specific
 value (host, identity, links) lives in **`src/site.config.ts`**.
 
 ![The portal: an SSH session to ludovic.toinel.com, after running whoami](docs/screenshot.png)
@@ -37,8 +22,6 @@ blinking cursor — all disabled under `prefers-reduced-motion`.
 
 - Node.js ≥ 22.18 — native TypeScript execution for `scripts/`, `server/` and the
   tests (CI runs the latest Node 22).
-- For the `msg` command only: a local MTA exposing `sendmail` (e.g. Postfix) on the
-  server. The site itself is fully static.
 
 ## Getting started
 
@@ -49,23 +32,22 @@ npm run dev      # dev server with HMR -> http://localhost:4321
 
 ## Scripts
 
-| Script                   | Purpose                                                       |
-| ------------------------ | ------------------------------------------------------------- |
-| `npm run dev`            | Development server (hot reload)                               |
-| `npm run build`          | Optimized static build → `dist/`                              |
-| `npm run preview`        | Preview the `dist/` build                                     |
-| `npm run check`          | Type checking / Astro diagnostics                             |
-| `npm run check:commands` | Validate + lint the commands (`root/bin/*.md`)                |
-| `npm test`               | Unit tests (Vitest)                                           |
-| `npm run coverage`       | Tests + coverage report, refreshes the README badges          |
-| `npm run test:ci`        | Tests + JUnit / Cobertura reports (used by Azure DevOps)      |
-| `npm run test:watch`     | Tests in watch mode                                           |
-| `npm run lint`           | ESLint                                                        |
-| `npm run format`         | Format the code (Prettier)                                    |
-| `npm run format:check`   | Check formatting without writing                              |
-| `npm run msg-server`     | Run the `msg` email relay locally (needs `MSG_TO`, see below) |
-| `npm run upgrade`        | List dependency updates                                       |
-| `npm run upgrade:apply`  | Apply updates + rebuild                                       |
+| Script                   | Purpose                                                  |
+| ------------------------ | -------------------------------------------------------- |
+| `npm run dev`            | Development server (hot reload)                          |
+| `npm run build`          | Optimized static build → `dist/`                         |
+| `npm run preview`        | Preview the `dist/` build                                |
+| `npm run check`          | Type checking / Astro diagnostics                        |
+| `npm run check:commands` | Validate + lint the commands (`root/bin/*.md`)           |
+| `npm test`               | Unit tests (Vitest)                                      |
+| `npm run coverage`       | Tests + coverage report, refreshes the README badges     |
+| `npm run test:ci`        | Tests + JUnit / Cobertura reports (used by Azure DevOps) |
+| `npm run test:watch`     | Tests in watch mode                                      |
+| `npm run lint`           | ESLint                                                   |
+| `npm run format`         | Format the code (Prettier)                               |
+| `npm run format:check`   | Check formatting without writing                         |
+| `npm run upgrade`        | List dependency updates                                  |
+| `npm run upgrade:apply`  | Apply updates + rebuild                                  |
 
 All of these checks (`format:check`, `lint`, `check:commands`, `check`, `test`, `build`)
 run automatically in CI on every _push_ and _pull request_ — on GitHub Actions
@@ -246,7 +228,7 @@ Supported markdown: `# Title`, `## Subtitle`, `> note`, `- bullet`,
   it asks for one), `webllmfit` (which
   models fit this machine). No model is downloaded
   without consent; the top-right widget shows the loaded model and token counts.
-- _Messaging_: `msg <text>` emails the owner (see below).
+- _Messaging_: `msg <text>` emails the owner.
 
 **Each command carries its own code**: a `root/bin/*.md` file is
 self-contained — readable JS, no third-party library, no command-specific module
@@ -259,12 +241,6 @@ running the `.md` itself against a fake `ctx` (`tests/run-command.ts`).
 `su` simulates switching to root (a `#` prompt, access to `/root`); `exit` returns
 to the user. Plus: persistent history (↑/↓), autocompletion (Tab), line editing
 (`Ctrl+A/E/U/K/W`), `Ctrl+L` (clear), `Ctrl+C` (interrupts a running command).
-
-> **SEO**: the terminal requires JavaScript (no static fallback). Search ranking
-> therefore relies on the `<head>`: `<title>`, meta description, Open Graph,
-> Twitter Card and above all the **`Person` JSON-LD** (server-rendered, so
-> readable without running JS). The per-command pages (`[command].astro`) also
-> emit each command's manual as crawlable, server-rendered HTML.
 
 ## Film, TV & video productions
 
@@ -303,35 +279,6 @@ identity and links (`src/site.config.ts`, `root/home/`) and any third-party
 brand before shooting. An on-screen or end-credit mention is appreciated but not
 required; open an issue on GitHub if you use it — it is always nice to know.
 
-## `msg` email relay
-
-`msg <text>` POSTs the message to **`/api/msg`**. nginx proxies that path to
-**`server/msg-server.ts`**, a tiny zero-dependency Node process listening on
-loopback, which emails the text to the owner through the local MTA
-(`sendmail -t -i`). The visitor's text only ever lands in the email body, never
-in a header.
-
-Abuse protection: per-IP cooldown (20 s), per-IP daily quota (15), global daily
-quota (120), 300-character limit, foreign `Origin` refused. The client IP is
-nginx's `X-Real-IP` (from `$remote_addr`, so it cannot be forged by the visitor).
-The pure logic (sanitizing, limiter, email builder) lives in `server/msg.ts` and
-is unit-tested.
-
-Configuration is read from the environment (see `deploy/msg.env.template`):
-`MSG_TO` (required), `MSG_FROM`, `MSG_HOST`, `MSG_PORT`, `MSG_ORIGIN`, `MSG_LOG`,
-`SENDMAIL`.
-
-**Deploy steps** (once):
-
-```bash
-npm run deploy:config            # renders deploy/generated/ for this domain & path
-sudo cp deploy/generated/msg.env ../msg.env        # then set MSG_TO
-sudo cp deploy/generated/msg-relay.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now msg-relay
-# install deploy/generated/nginx.conf as the site's server block, then:
-sudo nginx -t && sudo systemctl reload nginx
-```
-
 ## PWA & service worker
 
 `src/pages/sw.js.ts` generates `/sw.js` at build time with a content-derived
@@ -340,28 +287,10 @@ surfaces an **"update available" toast** when a new build's service worker is
 waiting. Manifest and icons (theme-colored terminal glyph) live in `public/`
 (`manifest.json`, `icons/`).
 
-## SEO & structured data
-
-Generated from **`src/site.config.ts`**; the `<head>` lives in `src/layouts/Layout.astro`
-and the structured-data block in `src/components/JsonLd.astro`:
-
-- `<title>`, meta description, canonical, `theme-color`
-- Open Graph + Twitter Card (image: `public/ludovic-toinel.jpg`, 800×800)
-- `schema.org/Person` JSON-LD (jobTitle, worksFor, birthPlace, **sameAs** — the
-  profiles flagged `sameAs` in `site.config.ts`)
-- Generated sitemap (`/sitemap.xml`) + `robots.txt`
-- A visible breadcrumb on every sub-page (`~ / page`), matching its
-  `BreadcrumbList`
-- The 404 page is `noindex`, has no canonical and no `WebPage` markup; nginx
-  answers unknown URLs with a real 404 status (no soft 404 — see
-  `deploy/nginx.conf.template`)
-
 ## Deployment
 
-The **web root (DocumentRoot)** must point to **`dist/`**; the relay's env file
-(`msg.env`) sits outside it. The server block is rendered from
-**`deploy/nginx.conf.template`** by `npm run deploy:config`
-(static serving + the `/api/msg` proxy + security headers/CSP).
+The **web root (DocumentRoot)** must point to **`dist/`**. The server block is
+rendered from **`deploy/nginx.conf.template`** by `npm run deploy:config`.
 
 ```bash
 npm install && npm run build   # -> dist/

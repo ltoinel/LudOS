@@ -30,7 +30,7 @@ const badge = (label: string, message: string, badgeColor: string, alt: string):
 const dynamic = [
   badge('coverage', `${coverage.toFixed(1)}%`, color, 'Test coverage'),
   badge('shell commands', String(commands), 'blueviolet', 'Shell commands'),
-].join('\n');
+].join(' ');
 
 const readmePath = join(root, 'README.md');
 const readme = readFileSync(readmePath, 'utf8');
@@ -39,6 +39,7 @@ if (!markers.test(readme)) {
   console.error('update-badges: markers <!-- badges:dynamic --> not found in README.md');
   process.exit(1);
 }
-// The blank line after the opening marker is what Prettier expects there.
-writeFileSync(readmePath, readme.replace(markers, `$1\n\n${dynamic}\n$2`));
+// The badges share one line with the static ones: an HTML comment at the start
+// of a line would open an HTML block and split the badge row into paragraphs.
+writeFileSync(readmePath, readme.replace(markers, `$1${dynamic}$2`));
 console.log(`✓ badges: coverage ${coverage.toFixed(1)}%, ${commands} commands`);

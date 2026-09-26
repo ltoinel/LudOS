@@ -12,7 +12,7 @@ man: |
   motd
 
   ## DESCRIPTION
-  Shows the welcome banner: the LudOS logo drawn by the asciiart command,
+  Shows the welcome banner: the Lud'OS logo drawn by the asciiart command,
   the release, a systemd-style boot sequence, the last-login date and a
   random quote or joke from the fortune command. This is what the
   connection plays (see boot).
@@ -25,8 +25,10 @@ man: |
 js: |
   const E = ctx.escape;
 
-  // Logo, drawn by the asciiart command, with the release underneath.
-  await ctx.exec('asciiart', ['-s', 'shadow', 'LudOS']);
+  // Logo, drawn by the asciiart command, with the release underneath (a blank
+  // line first, to set it apart from the SSH handshake).
+  ctx.line('');
+  await ctx.exec('asciiart', ['-s', 'small', "Lud'OS"]);
   if (ctx.cfg.version) ctx.sysLine(`version ${ctx.cfg.version}`);
   ctx.line('');
 
