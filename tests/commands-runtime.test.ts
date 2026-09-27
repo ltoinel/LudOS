@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMemoryStorage, runCommand } from './run-command.ts';
 
 describe('asciiart', () => {
@@ -520,5 +520,87 @@ describe('du', () => {
   it('reports unreadable or missing paths', async () => {
     expect((await runDu(['/root'])).err[0]).toMatch(/^du: cannot access '\/root'/);
     expect((await runDu(['nope'])).err[0]).toMatch(/^du: cannot access 'nope'/);
+  });
+});
+
+describe('geoip', () => {
+  const ipwhois = {
+    ip: '140.82.121.3',
+    success: true,
+    type: 'IPv4',
+    continent: 'Europe',
+    country: 'Germany',
+    country_code: 'DE',
+    region: 'Hessen',
+    city: 'Frankfurt am Main',
+    postal: '60256',
+    latitude: 50.1155,
+    longitude: 8.6842,
+    flag: { emoji: '🇩🇪' },
+    connection: { asn: 36459, org: 'GitHub, Inc.', isp: 'GitHub, Inc.', domain: 'github.com' },
+    timezone: { id: 'Europe/Berlin', utc: '+02:00' },
+  };
+  const json = (body: unknown, status = 200) =>
+    ({ ok: status < 400, status, json: async () => body }) as Response;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves a hostname, then locates its IP', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      if (url.startsWith('https://dns.google/'))
+        return json({ Status: 0, Answer: [{ type: 1, data: '140.82.121.3' }] });
+      return json(ipwhois);
+    });
+    const { out, err } = await runCommand('geoip', ['https://github.com/ltoinel']);
+    expect(err).toEqual([]);
+    expect(urls[0]).toContain('name=github.com&type=A');
+    expect(urls[1]).toBe('https://ipwho.is/140.82.121.3');
+    const text = out.join('\n');
+    expect(text).toContain('Host: github.com');
+    expect(text).toContain('Country: 🇩🇪 Germany (DE)');
+    expect(text).toContain('ASN: AS36459 · github.com');
+  });
+
+  it('falls back on ipapi.co when ipwho.is fails', async () => {
+    vi.stubGlobal('fetch', async (url: string) =>
+      url.startsWith('https://ipwho.is/')
+        ? json({}, 503)
+        : json({
+            ip: '8.8.8.8',
+            version: 'IPv4',
+            city: 'Mountain View',
+            region: 'California',
+            country_name: 'United States',
+            country_code: 'US',
+            latitude: 37.42301,
+            longitude: -122.083352,
+            timezone: 'America/Los_Angeles',
+            utc_offset: '-0700',
+            org: 'GOOGLE',
+            asn: 'AS15169',
+          }),
+    );
+    const { out } = await runCommand('geoip', ['8.8.8.8']);
+    const text = out.join('\n');
+    expect(text).toContain('Time zone: America/Los_Angeles (UTC-07:00)');
+    expect(text).toContain('source: ipapi.co');
+  });
+
+  it('answers private addresses locally, without any request', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const { out } = await runCommand('geoip', ['192.168.1.1']);
+    expect(out.join('\n')).toContain('Range: private network (RFC 1918)');
+    expect((await runCommand('geoip', ['fe80::1'])).out.join('\n')).toContain('Range: link-local');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects what is neither an IP nor a hostname', async () => {
+    const { err } = await runCommand('geoip', ['not_valid!']);
+    expect(err[0]).toContain('neither an IP address nor a hostname');
   });
 });

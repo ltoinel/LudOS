@@ -2,7 +2,7 @@
 name: kanban
 desc: show the todo tasks as a kanban board
 alias: board
-page: false
+seo_title: Kanban board in your terminal — todo, doing, done
 man: |
   # KANBAN(1)
 
@@ -20,6 +20,18 @@ man: |
 
   Move cards with todo: `todo start <id>`, `todo done <id>`,
   `todo reset <id>`.
+
+  ## HOW IT WORKS
+  The board is plain text, drawn from the same list as the todo command
+  (stored in your browser's localStorage). Nothing is sent to a server
+  and there is no account: add a card with `todo add`, move it with
+  `todo start` / `todo done`, and run kanban again to see it.
+
+  ## USE CASES
+  - see at a glance what is waiting, in progress and finished;
+  - limit work in progress: keep the DOING column short;
+  - paste the board into a chat or a ticket — it is just text
+    (kanban > board.txt saves it as a file).
 
   ## EXAMPLES
   kanban

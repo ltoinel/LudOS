@@ -38,7 +38,7 @@ man: |
   nslookup toinel.com MX
 
   ## SEE ALSO
-  whois, ping, checkip, httpstest
+  whois, ping, checkip, geoip, httpstest
 js: |
   // Real DNS is unreachable from the browser, so we resolve over DNS-over-HTTPS
   // (Google Public DNS, https://dns.google/resolve) which is CORS-enabled.

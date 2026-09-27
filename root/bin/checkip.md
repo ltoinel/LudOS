@@ -39,7 +39,7 @@ man: |
   checkip
 
   ## SEE ALSO
-  nslookup, whois, ping, useragent, httpstest
+  geoip, nslookup, whois, ping, useragent, httpstest
 js: |
   const E = ctx.escape;
   const row = (k, v) =>

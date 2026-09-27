@@ -1,8 +1,8 @@
 ---
 name: nano
 desc: edit a text file (a nano-like editor) — e.g. nano notes.txt
-alias: edit
-index: false
+alias: edit vi vim
+seo_title: Online text editor in your browser — nano-style, no signup
 man: |
   # NANO(1)
 
@@ -37,6 +37,24 @@ man: |
   ^C         show the cursor position (copies when text is selected)
   ^G         show / hide this help
   ^Z         undo typing (the browser's native undo; not cut / paste)
+
+  ## HOW IT WORKS
+  The editor is a plain text area styled as a terminal: no plugin, no
+  account, nothing sent to a server. Saved files go to the shell's
+  filesystem, kept in this browser (localStorage) — they are still there
+  after a reload, and gone if you clear the site's data.
+
+  ## USE CASES
+  - jot down a note or a snippet quickly, in a distraction-free editor;
+  - practise nano's shortcuts before using it on a real server;
+  - edit a document from the shell (cat about.md | nano) and save a copy.
+
+  ## NOTES
+  `vi` and `vim` open this same editor: it is not modal, so there is no
+  insert mode and no :wq — type right away, save with ^S, quit with ^X.
+
+  Files live only in this browser: they are not synced between devices.
+  Copy anything you want to keep elsewhere (^C copies the selection).
 
   ## EXAMPLES
   nano notes.txt

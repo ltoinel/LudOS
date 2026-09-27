@@ -1,6 +1,6 @@
 # LudOS
 
-[![CI](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml) <!-- badges:dynamic -->![Test coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen) ![Shell commands](https://img.shields.io/badge/shell%20commands-64-blueviolet)<!-- /badges:dynamic --> ![Astro 5](https://img.shields.io/badge/Astro-5-BC52EE?logo=astro&logoColor=white) ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white) ![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-5FA04E?logo=nodedotjs&logoColor=white) ![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success) ![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00) ![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml) <!-- badges:dynamic -->![Test coverage](https://img.shields.io/badge/coverage-96.2%25-brightgreen) ![Shell commands](https://img.shields.io/badge/shell%20commands-65-blueviolet)<!-- /badges:dynamic --> ![Astro 5](https://img.shields.io/badge/Astro-5-BC52EE?logo=astro&logoColor=white) ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white) ![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-5FA04E?logo=nodedotjs&logoColor=white) ![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success) ![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00) ![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Personal portal — **[Astro](https://astro.build) + [Tailwind CSS](https://tailwindcss.com) v4**.
 Static site, **terminal / phosphor aesthetic**, zero framework JS. Config-driven and reusable: every site-specific
@@ -207,7 +207,7 @@ Supported markdown: `# Title`, `## Subtitle`, `> note`, `- bullet`,
 - _System / identity_: `whoami`, `uname`, `date`, `echo`, `motd`, `su`/`sudo`,
   `theme`, `bell`, `clear`/`cls`, `history`, `help`, `man`, `boot`, `exit`,
   `shutdown`/`reboot`.
-- _Network_: `nslookup`, `whois`, `ping`, `httperf`, `httpstest`, `checkip`,
+- _Network_: `nslookup`, `whois`, `ping`, `httperf`, `httpstest`, `checkip`, `geoip`,
   `useragent`, `weather`, `open <name>`, `iframed <url>`.
 - _Tools / crypto_: `bc`/`calc`, `base64`, `sha256sum`, `md5sum`/`md5`, `jwt`,
   `uuid`, `password`/`pwgen` (unbiased `crypto.getRandomValues` generator), `qr`,

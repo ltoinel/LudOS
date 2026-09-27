@@ -1,7 +1,8 @@
 ---
 name: weather
 desc: current weather — e.g. weather, weather Tokyo
-index: false
+demo: weather
+seo_title: Current weather for your location or any city
 man: |
   # WEATHER(1)
 
@@ -12,16 +13,35 @@ man: |
   weather [city]
 
   ## DESCRIPTION
-  Shows the current weather (temperature, feels-like, wind, humidity)
-  for the given city. With no argument, uses your approximate location
+  Shows the current weather for the given city: the conditions with an
+  icon, the temperature and how it feels, the wind speed and direction,
+  and the humidity. With no argument, uses your approximate location
   (IP geolocation). Data from wttr.in.
+
+  ## HOW IT WORKS
+  The browser asks wttr.in for its JSON report (`format=j1`) directly,
+  over HTTPS. Without a city, wttr.in locates you from the address your
+  request comes from, like `geoip` does. The request gives up after 7
+  seconds, and Ctrl+C cancels it.
+
+  ## USE CASES
+  - check the weather before going out, without opening a weather site;
+  - compare the conditions in two cities (weather Paris, weather Tokyo);
+  - see what place your IP address is located in (behind a VPN, the
+    weather is the exit server's).
+
+  ## NOTES
+  City names can be written in most languages (weather München, weather
+  Genève); an airport code works too (weather CDG). Your own location is
+  approximate: it is usually your provider's nearest network hub.
 
   ## EXAMPLES
   weather
   weather Tokyo
+  weather "New York"
 
   ## SEE ALSO
-  checkip
+  geoip, checkip, date
 js: |
   const city = ctx.args.filter((a) => !a.startsWith('-')).join(' ').trim();
   const label = city || 'your location';

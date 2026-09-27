@@ -2,7 +2,7 @@
 name: todo
 desc: lightweight task manager — e.g. todo add "finish the project", todo ls
 alias: task
-page: false
+seo_title: Simple to-do list in your browser — no account, command line
 man: |
   # TODO(1)
 
@@ -35,6 +35,23 @@ man: |
   edit <id> <text> change a task's text
   rm <id>          delete a task
   clear            delete every finished task
+
+  ## HOW IT WORKS
+  Tasks are stored in your browser's localStorage, never on a server: no
+  account, no sync, nothing to install. Every change is written at once,
+  so the list survives a reload, and every open shell window sees the
+  same tasks.
+
+  ## USE CASES
+  - keep a quick to-do list for the day without opening another app;
+  - track what is in progress (todo start) versus finished (todo done);
+  - follow the tasks on a board with kanban, and work through them with
+    pomodoro.
+
+  ## NOTES
+  The list lives only in this browser: another browser or device has its
+  own, and clearing the site's data empties it. Ids are not renumbered
+  when a task is removed, so the other tasks keep theirs.
 
   ## EXAMPLES
   todo add "Finish the project"
