@@ -1,9 +1,9 @@
 {
-  "name": "WebLLMTerminal",
-  "version": "3.0.0",
+  "name": "ludos",
+  "version": "3.0.1",
   "private": true,
   "type": "module",
-  "description": "WebLLM Shell terminal is a web-based terminal that allows you to interact with a local LLM (Large Language Model) running on your machine. It provides a command-line interface for executing commands and receiving responses from the LLM.",
+  "description": "LudOS — A full Web Shell Terminal supporting Web LLM and experimental agentic features.",
   "author": "Ludovic Toinel",
   "license": "MIT",
   "homepage": "https://ludovic.toinel.com",

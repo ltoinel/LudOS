@@ -30,18 +30,38 @@ man: |
     seeing every fact gathered so far (so one result can feed the next
     command, e.g. checkip finds your city, then weather <city>), the command
     runs, and the model extracts its facts — or, with the command's manual
-    in view, explains what went wrong so the next decision can fix it;
-  - synthesize: several candidate answers are drafted from the facts;
-  - critique: each candidate is scored against the facts; if something is
-    missing, one more command is run and the answer re-synthesized;
-  - answer: the best-scored candidate wins.
+    in view, explains what went wrong so the next decision can fix it. A
+    lookup (help -k <keyword>, man <command>) skips that check: its output
+    is kept as-is for the next decision, so the agent can find a command
+    it did not think of, then use it (its manual then joins the context);
+  - synthesize: an answer is drafted from the facts;
+  - critique: only when the investigation did not settle the goal (or with
+    --candidates > 1), the draft is scored against the facts; if something
+    is missing, one more command is run and the answer re-synthesized;
+  - answer: the best-scored draft wins.
 
-  The model runs locally, so the defaults are generous (12 steps, 3
-  candidates, 2 critique rounds) — reasoning only costs time.
+  A small local model is slow, so the agent spends calls only where they
+  help: a short, single-part goal skips the plan, and a settled
+  investigation goes straight to one answer — about 4 to 5 model calls
+  for a simple question. Every prompt is kept within the model's context
+  window (manuals, then lookups, then the oldest facts are trimmed first)
+  and every generation has a length cap.
+
+  denree adapts to the model loaded in the browser: every budget is derived
+  from that model's context window (4k tokens for most builds, 1k or 2k for
+  some — shown at the top of the tree), and the characters-per-token
+  estimate is measured on each call from the token counts the engine
+  reports. In a small window the command list shrinks to names only, and
+  outputs, manuals and facts are cut shorter. Should a prompt still
+  overflow, it is rebuilt from the exact token count and retried once.
 
   Every decision is constrained to JSON by the engine (grammar-guided
-  generation). The model receives the whole catalog of usable commands
-  (`denree --commands`) and the manuals of the most relevant ones. Commands
+  generation). Every call starts with the same system prompt: the model is
+  told it runs in the visitor's browser, inside LudOS — a simulated Linux
+  environment whose shell commands it is free to use to answer — and that
+  `help -k <keyword>` finds the commands whose manual mentions a keyword
+  (plain `help` would only repeat the list it already has). It also receives the whole catalog of usable
+  commands (`denree --commands`) and the manuals of the most relevant ones. Commands
   with side effects, endless or heavy ones (rm, su, msg, open, dl, top,
   hashcat, httperf, todo, say, the LLM commands…) are blocked for safety,
   and interactive commands get no keyboard input.
@@ -55,8 +75,8 @@ man: |
   --commands, --list   list the commands the agent may use
   --model <id>         pick the reasoning model (default: Qwen2.5-1.5B)
   --steps <n>          max decide → act → reflect steps (1–30, default 12)
-  --candidates <n>     candidate answers drafted and judged (1–5, default 3)
-  --rounds <n>         critique/refinement rounds (0–4, default 2)
+  --candidates <n>     answers drafted, then ranked by a critique (1–5, default 1)
+  --rounds <n>         critique/refinement rounds when the goal is not settled (0–4, default 2)
   --fast               6 steps, one candidate, no critique round (quicker)
   --unload, --stop     free the loaded model from GPU memory
 
@@ -81,8 +101,8 @@ js: |
   //        ─▶ REFLECT     extract the facts, or explain what went wrong (with the
   //                       command's manual in view), and tell if the goal is met
   //           … loop DECIDE → ACT → REFLECT until answered or out of steps
-  //        ─▶ SYNTHESIZE  draft several candidate answers from the facts
-  //        ─▶ CRITIQUE    score them; if something is missing, run the proposed
+  //        ─▶ SYNTHESIZE  draft the answer from the facts
+  //        ─▶ CRITIQUE    if not settled: score it; if something is missing, run the proposed
   //                       command and synthesize again
   //        ─▶ ANSWER      the best-scored draft
   //
@@ -108,13 +128,13 @@ js: |
 
   // ------------------------------------------------------------------ options
 
-  // The model runs locally, so reasoning costs nothing but time: the defaults
-  // are generous, and still bounded so a confused model cannot loop forever.
+  // The model runs locally, so reasoning costs time, not money: calls are spent
+  // only where they help, and bounded so a confused model cannot loop forever.
   const options = {
     model: undefined,
     maxSteps: 12, // decide → act → reflect steps (commands run)
-    candidates: 3, // candidate answers drafted, then judged
-    rounds: 2, // critique → extra command → re-synthesis rounds
+    candidates: 1, // answers drafted; more than one are judged by a critique
+    rounds: 2, // critique → extra command → re-synthesis, if the goal is not settled
   };
   const goalWords = [];
   for (let i = 0; i < args.length; i++) {
@@ -125,7 +145,7 @@ js: |
     } else if (arg === '--steps' || arg === '--budget') {
       options.maxSteps = Math.min(30, Math.max(1, next() || 12));
     } else if (arg === '--candidates') {
-      options.candidates = Math.min(5, Math.max(1, next() || 3));
+      options.candidates = Math.min(5, Math.max(1, next() || 1));
     } else if (arg === '--rounds') {
       options.rounds = Math.min(4, Math.max(0, next() || 0));
     } else if (arg === '--fast') {
@@ -324,24 +344,80 @@ js: |
 
   let llmCalls = 0;
 
+  // The system prompt shared by every call: who the agent is, where it runs,
+  // and how it can discover the commands it may use.
+  const SYSTEM_CONTEXT =
+    'You are Denree, an AI agent running entirely in the user\'s web browser ' +
+    '(a local language model on WebGPU, no server). You operate inside LudOS, a ' +
+    'website that simulates a Linux environment with its own shell commands. You are ' +
+    'free to use these commands to answer the user\'s requests. To find a command, ' +
+    'run `help -k <keyword>`: it lists the commands whose manual mentions the keyword ' +
+    '(e.g. help -k weather); `man <command>` shows how to use one. Plain `help` adds ' +
+    'nothing: every command is already listed below.';
+
+  // ------------------------------------------------------------ model limits
+
+  // Every prompt is sized from the loaded model's context window, which the
+  // prompt and the answer share: 4k tokens for most WebLLM builds, 1k or 2k
+  // for some. Unknown (older engine) ⇒ assume the common 4k.
+  const contextWindow = (ctx.llm.state() || {}).contextWindow || 4096;
+  // Characters per token: a cautious first guess, then measured on every call
+  // from the prompt tokens the engine reports (chat template included, which
+  // keeps the estimate on the safe side).
+  let charsPerToken = 3.2;
+  const TEMPLATE_TOKENS = 64; // role markers + margin
+  // An answer never takes more than a quarter of the window.
+  const outputCap = (wanted) => Math.max(48, Math.min(wanted, Math.floor(contextWindow / 4)));
+  // Characters left for the call-specific part of a prompt (after the shared
+  // system prompt) when the answer is capped at `cap` tokens.
+  const promptBudget = (cap) =>
+    Math.max(
+      400,
+      Math.floor((contextWindow - cap - TEMPLATE_TOKENS) * charsPerToken) - SYSTEM_CONTEXT.length,
+    );
+
   // One stateless model call. Every call gets a condensed state (facts,
   // failures) rather than a growing transcript, so any number of steps fits in
-  // a small model's context window (4k tokens for the default model).
-  // With a schema, returns the parsed object ({} if unparsable).
-  const think = async (system, user, { schema, temperature = 0 } = {}) => {
-    llmCalls++;
-    const result = await ctx.llm.chat({
-      messages: [
-        { role: 'system', content: system },
+  // the context window. `build(budget)` returns { system, user } within
+  // `budget` characters; it is rebuilt with a tighter budget if the engine
+  // still reports an overflow. With a schema, returns the parsed object ({} if
+  // unparsable).
+  const think = async (build, { schema, temperature = 0, maxTokens = 256 } = {}) => {
+    const cap = outputCap(maxTokens);
+    for (let attempt = 0; ; attempt++) {
+      const { system, user } = build(promptBudget(cap));
+      const messages = [
+        { role: 'system', content: SYSTEM_CONTEXT + '\n\n' + system },
         { role: 'user', content: user },
-      ],
-      schema,
-      temperature,
-      stream: false,
-      signal: ctx.signal,
-    });
-    const text = ((result && result.content) || '').trim();
-    return schema ? parseJson(text) || {} : text;
+      ];
+      const chars = messages[0].content.length + user.length;
+      llmCalls++;
+      let result;
+      try {
+        result = await ctx.llm.chat({
+          messages,
+          schema,
+          temperature,
+          maxTokens: cap,
+          stream: false,
+          signal: ctx.signal,
+        });
+      } catch (e) {
+        // "Prompt tokens exceed context window size: number of prompt tokens: N"
+        const overflow = String((e && e.message) || e).match(/prompt tokens: (\d+)/);
+        if (!overflow || attempt > 0) throw e;
+        charsPerToken = Math.max(1.2, (chars / Number(overflow[1])) * 0.9);
+        continue;
+      }
+      const promptTokens = result && result.usage && result.usage.promptTokens;
+      if (promptTokens) {
+        const measured = chars / promptTokens;
+        // Follow a denser text at once, a lighter one halfway.
+        charsPerToken = Math.min(5, Math.max(1.2, measured < charsPerToken ? measured : (charsPerToken + measured) / 2));
+      }
+      const text = ((result && result.content) || '').trim();
+      return schema ? parseJson(text) || {} : text;
+    }
   };
 
   // ------------------------------------------------------------ context
@@ -349,14 +425,36 @@ js: |
   const catalog = usable
     .map((c) => `- ${c.name}${c.alias.length ? ` (alias: ${c.alias.join(', ')})` : ''}: ${c.desc}`)
     .join('\n');
+  // A small window cannot hold every description (~2k characters): the names
+  // alone then, help -k telling what each does.
+  const catalogFor = (budget) =>
+    catalog.length <= budget * 0.3
+      ? 'Available commands (name: description):\n' + catalog
+      : 'Available commands (help -k <keyword> tells what each does): ' +
+        usable.map((c) => c.name).join(', ');
   const commandByName = (name) =>
     usable.find((c) => c.name === name || c.alias.includes(name)) || null;
   const manualOf = (name) => {
     const command = commandByName(name);
     return command && command.man ? `### ${command.name}\n${manExcerpt(command.man)}` : '';
   };
-  // Manuals of the commands most relevant to the goal (lexical mini-RAG).
+  // Manuals of the commands most relevant to the goal (lexical mini-RAG),
+  // completed during the run by the commands found through help -k / man.
   const goalManuals = rankManuals(goal, usable, 4);
+  const lookedUp = []; // command names, most recent first
+  const manualsText = (limit) => {
+    const names = [...new Set([...lookedUp, ...goalManuals.map((c) => c.name)])];
+    let text = '';
+    for (const name of names) {
+      const manual = manualOf(name);
+      if (!manual || text.length + manual.length + 2 > limit) continue;
+      text += (text ? '\n\n' : '') + manual;
+    }
+    return text ? 'Reference manuals (exact syntax and flags):\n\n' + text : '';
+  };
+
+  // Keeps the start of a text that must fit in `limit` characters.
+  const clip = (text, limit) => (text.length > limit ? text.slice(0, Math.max(0, limit - 1)) + '…' : text);
 
   const TERMINAL_RULES =
     'Command rules: use only the commands listed, by their plain name, one single line ' +
@@ -370,15 +468,37 @@ js: |
   const facts = []; // { command, facts } — evidence for the answer
   const failures = []; // { command, reason } — what did not work, and why
   const ran = new Map(); // normalized command → observation (never run twice)
+  // help / man outputs: what the agent learned about the commands themselves.
+  // Not evidence for the answer, so kept apart from the facts and shown as-is
+  // to the next decision (the reflect step would discard it as off-topic).
+  const DISCOVERY = new Set(['help', 'man']);
+  const discoveries = []; // { command, output }
   let commandsRun = 0;
 
+  // Keeps the most recent entries that fit in `limit` characters, whole — a
+  // fact cut mid-line could turn into a wrong value.
+  const newestFirst = (entries, limit) => {
+    const kept = [];
+    let size = 0;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (size + entries[i].length + 2 > limit) break;
+      kept.unshift(entries[i]);
+      size += entries[i].length + 2;
+    }
+    return kept.join('\n\n');
+  };
   const factsText = (limit = 2400) =>
     facts.length
-      ? facts
-          .map((f, i) => `[${i + 1}] $ ${f.command}\n${f.facts}`)
-          .join('\n\n')
-          .slice(-limit) // keep the most recent evidence if it grows long
+      ? newestFirst(
+          facts.map((f, i) => `[${i + 1}] $ ${f.command}\n${f.facts}`),
+          limit,
+        ) || facts[facts.length - 1].facts.slice(0, limit)
       : '(none yet)';
+  const discoveriesText = (limit = 1200) =>
+    newestFirst(
+      discoveries.map((d) => `$ ${d.command}\n${d.output.slice(0, limit)}`),
+      limit,
+    );
   const failuresText = () =>
     failures.length
       ? failures.map((f) => `- $ ${f.command} → ${f.reason}`).join('\n').slice(-800)
@@ -481,16 +601,23 @@ js: |
 
   // ------------------------------------------------------------ SYNTHESIZE + CRITIQUE
 
+  const SYNTHESIZE_RULES =
+    'You answer the question using the numbered facts gathered from terminal commands. ' +
+    'Use ONLY those facts for anything factual or live (IP, weather, dates, files…); ' +
+    'never invent, convert or substitute values. If the facts are empty and the ' +
+    'question needs live data, say you could not find it. A purely general or ' +
+    'conversational question may be answered from general knowledge. Be concise and ' +
+    'reply in the SAME language as the question.';
   const synthesize = (temperature) =>
     think(
-      'You answer the question using the numbered facts gathered from terminal commands. ' +
-        'Use ONLY those facts for anything factual or live (IP, weather, dates, files…); ' +
-        'never invent, convert or substitute values. If the facts are empty and the ' +
-        'question needs live data, say you could not find it. A purely general or ' +
-        'conversational question may be answered from general knowledge. Be concise and ' +
-        'reply in the SAME language as the question.',
-      `Question: ${goal}\n\nFacts:\n${factsText(3000)}\n\nAnswer:`,
-      { temperature },
+      (budget) => {
+        const room = budget - SYNTHESIZE_RULES.length - goal.length - 30;
+        return {
+          system: SYNTHESIZE_RULES,
+          user: `Question: ${goal}\n\nFacts:\n${factsText(Math.max(200, Math.min(3000, room)))}\n\nAnswer:`,
+        };
+      },
+      { temperature, maxTokens: 400 },
     );
 
   const CRITIQUE_SCHEMA = {
@@ -503,16 +630,34 @@ js: |
     required: ['score', 'missing', 'command'],
   };
 
+  const CRITIQUE_RULES =
+    'You grade an answer from 0 to 10: is it fully supported by the facts, complete, ' +
+    'and does it answer the question? Deduct heavily for any value not present in the ' +
+    'facts. If information is missing, describe it in "missing" and propose ONE ' +
+    'command that would provide it in "command" (else "").\n' +
+    TERMINAL_RULES;
   const critique = (draft) =>
     think(
-      'You grade an answer from 0 to 10: is it fully supported by the facts, complete, ' +
-        'and does it answer the question? Deduct heavily for any value not present in the ' +
-        'facts. If information is missing, describe it in "missing" and propose ONE ' +
-        'command that would provide it in "command" (else "").\n' +
-        TERMINAL_RULES + '\n\nAvailable commands:\n' + catalog,
-      `Question: ${goal}\n\nFacts:\n${factsText()}\n\nAnswer to grade:\n${draft}`,
-      { schema: CRITIQUE_SCHEMA },
+      (budget) => {
+        const system = CRITIQUE_RULES + '\n\n' + catalogFor(budget);
+        const answerPart = clip(draft, 800);
+        const room = budget - system.length - goal.length - answerPart.length - 50;
+        return {
+          system,
+          user:
+            `Question: ${goal}\n\nFacts:\n${factsText(Math.max(200, Math.min(2400, room)))}\n\n` +
+            `Answer to grade:\n${answerPart}`,
+        };
+      },
+      { schema: CRITIQUE_SCHEMA, maxTokens: 200 },
     );
+
+  const REFLECT_RULES =
+    'You check a command output for a goal. Extract the facts relevant to the goal ' +
+    'literally (numbers, names, dates) — never invent or convert. If the output is an ' +
+    'error, empty or off-topic, set useful=false and explain the problem in one short ' +
+    'sentence (e.g. the correct syntax from the manual). Set goal_answered=true only ' +
+    'if all the facts gathered so far fully answer the goal.';
 
   // ------------------------------------------------------------ the loop
 
@@ -526,16 +671,44 @@ js: |
       failures.push({ command: result.command, reason: 'already run — use its facts or try another command' });
       return false;
     }
+    // A lookup (help -k weather, man weather) is remembered for the next
+    // decision instead of being judged as evidence. Piped, it is a normal step.
+    if (DISCOVERY.has(result.name) && !result.command.includes('|')) {
+      if (result.ok) {
+        discoveries.push({ command: result.command, output: result.observation });
+        // The commands it points at get their manual in the next prompts:
+        // `man x` names one, `help -k` lists one per line (name first).
+        const words = result.command.split(/\s+/);
+        const found = (result.name === 'man'
+          ? [words[1]]
+          : result.observation.split('\n').map((line) => line.trim().split(/\s+/)[0])
+        ).filter((name) => name && commandByName(name) && name !== 'help');
+        for (const name of found.slice(0, 2).reverse()) {
+          const canonical = commandByName(name).name;
+          if (!lookedUp.includes(canonical)) lookedUp.unshift(canonical);
+        }
+        addNode(node, '📖', 'noted for the next decision', 'info', found.length ? `manuals: ${found.slice(0, 2).join(', ')}` : '');
+      } else {
+        failures.push({ command: result.command, reason: result.observation.slice(0, 160) });
+        addNode(node, '✗', 'nothing found', 'fail');
+      }
+      return false;
+    }
     const reflection = await think(
-      'You check a command output for a goal. Extract the facts relevant to the goal ' +
-        'literally (numbers, names, dates) — never invent or convert. If the output is an ' +
-        'error, empty or off-topic, set useful=false and explain the problem in one short ' +
-        'sentence (e.g. the correct syntax from the manual). Set goal_answered=true only ' +
-        'if all the facts gathered so far fully answer the goal.\n\n' +
-        manualOf(result.name),
-      `Goal: ${goal}\n\nFacts so far:\n${factsText(1200)}\n\n` +
-        `Command: ${result.command}\nOutput:\n${result.observation}`,
-      { schema: REFLECT_SCHEMA },
+      (budget) => {
+        // The output matters most here, then the manual, then earlier facts.
+        const rules = REFLECT_RULES;
+        const output = clip(result.observation, Math.max(300, Math.min(1500, budget * 0.45)));
+        const manual = clip(manualOf(result.name), Math.max(0, Math.min(700, budget * 0.2)));
+        const room = budget - rules.length - manual.length - output.length - goal.length - result.command.length - 60;
+        return {
+          system: rules + '\n\n' + manual,
+          user:
+            `Goal: ${goal}\n\nFacts so far:\n${factsText(Math.max(150, Math.min(1200, room)))}\n\n` +
+            `Command: ${result.command}\nOutput:\n${output}`,
+        };
+      },
+      { schema: REFLECT_SCHEMA, maxTokens: 320 },
     );
     const extracted = (reflection.facts || '').trim();
     // Small models sometimes "extract" a placeholder: that is no evidence.
@@ -556,31 +729,41 @@ js: |
   try {
     ctx.line('');
     const root = addNode(null, '◆', `goal: ${goal}`, 'info');
+    addNode(
+      root,
+      '📏',
+      `context window: ${contextWindow} tokens`,
+      'info',
+      catalog.length > promptBudget(200) * 0.3 ? 'small window — compact command list, shorter prompts' : '',
+    );
     if (goalManuals.length) {
       addNode(root, '📚', `manuals: ${goalManuals.map((c) => c.name).join(', ')}`, 'info');
     }
-    const manualContext = goalManuals.length
-      ? 'Reference manuals (exact syntax and flags):\n\n' +
-        goalManuals.map((c) => manualOf(c.name)).join('\n\n')
-      : '';
 
     // PLAN: a first decomposition, used as a hint by every later decision —
-    // not a fixed script, so the agent can adapt to what it discovers.
-    const plan = await think(
-      'You are Denree, an agent operating a Unix-like terminal in the user\'s browser. ' +
-        'Split the goal into the short sub-questions needed to answer it, in order, and ' +
-        'give for each the command most likely to answer it ("" if no command is needed). ' +
-        'A later step may depend on an earlier result: write it as a question, the ' +
-        'command will be decided when that result is known.\n' +
-        TERMINAL_RULES + '\n\nAvailable commands (name: description):\n' + catalog + '\n\n' +
-        manualContext,
-      `Goal: ${goal}`,
-      { schema: PLAN_SCHEMA },
+    // not a fixed script, so the agent can adapt to what it discovers. A
+    // short, single-part goal skips it: the decisions see every fact anyway,
+    // so the plan would only cost one more model call.
+    const multiPart = /\b(and|then|et|puis|also|after)\b|[,;]/i.test(goal);
+    const needsPlan = multiPart || tokenize(goal).length > 6;
+    const PLAN_RULES =
+      'Split the goal into the short sub-questions needed to answer it, in order, and ' +
+      'give for each the command most likely to answer it ("" if no command is needed). ' +
+      'A later step may depend on an earlier result: write it as a question, the ' +
+      'command will be decided when that result is known.\n' +
+      TERMINAL_RULES;
+    const plan = !needsPlan ? { analysis: 'short goal — no plan needed', steps: [] } : await think(
+      (budget) => {
+        const system = PLAN_RULES + '\n\n' + catalogFor(budget);
+        const room = budget - system.length - goal.length - 10;
+        return { system: system + '\n\n' + manualsText(Math.max(0, Math.min(2600, room))), user: `Goal: ${goal}` };
+      },
+      { schema: PLAN_SCHEMA, maxTokens: 320 },
     );
     const hints = (Array.isArray(plan.steps) ? plan.steps : [])
       .filter((s) => s && typeof s.question === 'string')
       .slice(0, 6);
-    const planNode = addNode(root, '🧭', 'plan', 'info', (plan.analysis || '').slice(0, 220));
+    const planNode = addNode(root, '🧭', needsPlan ? 'plan' : 'plan skipped', 'info', (plan.analysis || '').slice(0, 220));
     for (const hint of hints) {
       addNode(planNode, '?', hint.question, 'info', hint.command ? `→ ${hint.command}` : '');
     }
@@ -608,27 +791,47 @@ js: |
     // DECIDE → ACT → REFLECT, until the goal is answered or the steps run out.
     const actNode = addNode(root, '⚙', 'investigation', 'info');
     let settled = false; // the loop ended on its own (answer ready / nothing to run)
+    let resolved = false; // …and the model judged the facts sufficient
     let stuck = 0; // decisions that only repeated an earlier command
+    const DECIDE_RULES =
+      'Decide the NEXT step ' +
+      'towards the goal, using the facts gathered so far: action "run" with ONE ' +
+      'command (you may reuse values from the facts as arguments), or action ' +
+      '"answer" when the facts already answer the goal (or when no command can ' +
+      'help). Never repeat a command from the failures without fixing it. If no ' +
+      'listed command obviously fits, look one up with help -k <keyword> (or read ' +
+      'its usage with man <command>) before giving up.\n' +
+      TERMINAL_RULES;
     for (let n = 0; n < options.maxSteps && !aborted(); n++) {
+      // Fit the prompt in the budget: the fixed parts first, then the facts
+      // (the evidence matters most), the lookups, and the manuals last.
+      const head = `Goal: ${goal}\n\nPlan (a hint):\n${planText}\n\n`;
+      const tail =
+        `Failures:\n${failuresText()}\n\n` +
+        `Commands already run (NEVER run them again): ${[...attempted].join(', ') || '(none)'}\n\n` +
+        'Next step:';
       const decision = await think(
-        'You are Denree, an agent operating a Unix-like terminal. Decide the NEXT step ' +
-          'towards the goal, using the facts gathered so far: action "run" with ONE ' +
-          'command (you may reuse values from the facts as arguments), or action ' +
-          '"answer" when the facts already answer the goal (or when no command can ' +
-          'help). Never repeat a command from the failures without fixing it.\n' +
-          TERMINAL_RULES + '\n\nAvailable commands (name: description):\n' + catalog + '\n\n' +
-          manualContext,
-        `Goal: ${goal}\n\nPlan (a hint):\n${planText}\n\nFacts so far:\n${factsText()}\n\n` +
-          `Failures:\n${failuresText()}\n\n` +
-          `Commands already run (NEVER run them again): ${[...attempted].join(', ') || '(none)'}\n\n` +
-          'Next step:',
-        { schema: DECIDE_SCHEMA },
+        (budget) => {
+          const rules = DECIDE_RULES + '\n\n' + catalogFor(budget);
+          let room = budget - rules.length - head.length - tail.length;
+          const factsPart = `Facts so far:\n${factsText(Math.max(200, Math.min(2400, room * 0.5)))}\n\n`;
+          room -= factsPart.length;
+          const lookups = discoveries.length ? discoveriesText(Math.max(150, Math.min(1200, room * 0.4))) : '';
+          const lookupsPart = lookups ? `Command lookups (help / man):\n${lookups}\n\n` : '';
+          room -= lookupsPart.length;
+          return {
+            system: rules + '\n\n' + manualsText(Math.max(0, room)),
+            user: head + factsPart + lookupsPart + tail,
+          };
+        },
+        { schema: DECIDE_SCHEMA, maxTokens: 200 },
       );
       noteMentions(decision.thought);
       const command = (decision.command || '').trim();
       if (decision.action !== 'run' || !command) {
         addNode(actNode, '■', 'enough to answer', 'info', (decision.thought || '').slice(0, 160));
         settled = true;
+        resolved = facts.length > 0;
         break;
       }
       // A repeat brings nothing new: try an untried command the model itself
@@ -644,12 +847,14 @@ js: |
         addNode(actNode, '↻', `"${command}" already ran — trying "${fallback}" instead`, 'info');
         if (await step(fallback, actNode)) {
           settled = true;
+          resolved = true;
           break;
         }
         continue;
       }
       if (await step(command, actNode)) {
         settled = true;
+        resolved = true;
         break;
       }
     }
@@ -657,17 +862,25 @@ js: |
       addNode(actNode, '⌛', `step budget reached (${options.maxSteps})`, 'info');
     }
 
-    // SYNTHESIZE several candidates, CRITIQUE them, keep the best; if the best
-    // one misses something, run the command the critique proposes and retry.
+    // SYNTHESIZE, then CRITIQUE only when it can change the outcome: several
+    // candidates to rank, or an investigation that did not settle the goal
+    // (then a missing fact can trigger one more command and a new draft).
+    // A small model grades its own settled answer poorly — not worth a call.
+    const review = options.candidates > 1 || (options.rounds > 0 && !resolved);
     for (let round = 0; round <= options.rounds && !aborted(); round++) {
       const draftsNode = addNode(root, '✎', `synthesis${round ? ` (round ${round + 1})` : ''}`, 'info');
       const scored = [];
       for (let i = 0; i < options.candidates && !aborted(); i++) {
         const draft = await synthesize(i === 0 ? 0 : 0.7);
         if (!draft) continue;
-        const review = options.candidates > 1 || options.rounds > 0 ? await critique(draft) : { score: 10 };
-        const score = Math.max(0, Math.min(10, Number(review.score) || 0));
-        scored.push({ draft, score, review });
+        if (!review) {
+          scored.push({ draft, score: null, review: {} });
+          addNode(draftsNode, '◇', 'answer drafted', 'ok', draft.slice(0, 160));
+          continue;
+        }
+        const grade = await critique(draft);
+        const score = Math.max(0, Math.min(10, Number(grade.score) || 0));
+        scored.push({ draft, score, review: grade });
         addNode(draftsNode, '◇', `candidate ${i + 1} — score ${score}/10`, score >= 6 ? 'ok' : 'fail', draft.slice(0, 160));
       }
       if (!scored.length) break;
@@ -677,7 +890,7 @@ js: |
       bestScore = best.score;
 
       const followUp = (best.review.command || '').trim();
-      if (best.score >= 8 || round >= options.rounds || !followUp) break;
+      if (!review || best.score >= 8 || round >= options.rounds || !followUp) break;
       const gapNode = addNode(draftsNode, '⚑', `missing: ${best.review.missing || 'more evidence'}`, 'fail');
       const before = facts.length;
       await step(followUp, gapNode);

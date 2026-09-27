@@ -1,4 +1,4 @@
-🏴‍☠️  You are root on LudOs.
+🏴‍☠️  You are root on LudOS.
 
 No secrets here.
 If you are reading these lines, you know what `su` is. Respect.

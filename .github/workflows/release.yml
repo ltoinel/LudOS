@@ -1,0 +1,70 @@
+name: Release
+
+# Publishes a GitHub release when a version tag is pushed:
+#   npm version minor && git push --follow-tags
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x' # engines: >=22.18 (native TS)
+          cache: npm
+
+      # The site shows package.json's version (boot banner, `uname`, os-release),
+      # so a tag that disagrees with it would ship a mislabelled release.
+      - name: Check tag matches package.json version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Validate commands
+        run: npm run check:commands
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      # Built from src/site.config.example.ts (the real config is gitignored),
+      # so the archive is a generic, deployable LudOS build.
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        run: |
+          name="ludos-$GITHUB_REF_NAME"
+          tar -czf "$name.tar.gz" -C dist .
+          (cd dist && zip -qr "../$name.zip" .)
+          sha256sum "$name.tar.gz" "$name.zip" > "$name.sha256"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="ludos-$GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "LudOS $GITHUB_REF_NAME" \
+            --generate-notes \
+            "$name.tar.gz" "$name.zip" "$name.sha256"

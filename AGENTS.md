@@ -6,7 +6,7 @@ before making changes. For an in-depth, feature-by-feature tour, see
 
 ## What this project is
 
-Personal portal **`ludovic.toinel.com`** — a static site with a **terminal /
+**LudOS**, the personal portal **`ludovic.toinel.com`** — a static site with a **terminal /
 phosphor aesthetic**, built with **[Astro](https://astro.build) 5 +
 [Tailwind CSS](https://tailwindcss.com) v4**. Zero framework JS (no React/Vue):
 the interactivity is a hand-written shell engine. Two themes (CRT green with a
@@ -76,6 +76,12 @@ npm run check          # astro check (types / diagnostics)
 npm test               # Vitest
 npm run build          # static build -> dist/
 ```
+
+Releases: `npm version <patch|minor|major> && git push --follow-tags`. The
+`v*.*.*` tag triggers `.github/workflows/release.yml`, which re-runs the checks,
+builds `dist/` from the example config and publishes a GitHub release with
+auto-generated notes and `ludos-vX.Y.Z.{tar.gz,zip,sha256}` assets. The tag
+must match the `package.json` version.
 
 `npm run format` auto-fixes formatting. Prefer the narrow command while
 iterating (e.g. `npm test`) and the full sweep before finishing.

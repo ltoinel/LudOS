@@ -93,6 +93,8 @@ export interface LlmState {
   progressText: string;
   tokensIn: number;
   tokensOut: number;
+  /** The loaded model's context window in tokens (prompt + output), null if unknown. */
+  contextWindow: number | null;
   version: string;
 }
 
@@ -137,6 +139,8 @@ export interface ChatRequest {
   /** Stream tokens (default true). */
   stream?: boolean;
   temperature?: number;
+  /** Cap on generated tokens, so an answer cannot overflow a small context window. */
+  maxTokens?: number;
   signal?: AbortSignal;
   /** Called with each streamed delta when `stream` is true. */
   onToken?: (delta: string, full: string) => void;
@@ -159,6 +163,7 @@ interface Slot {
   progressText: string;
   tokensIn: number;
   tokensOut: number;
+  contextWindow: number | null;
   listeners: Set<(s: LlmState) => void>;
 }
 
@@ -174,6 +179,7 @@ const slot: Slot =
     progressText: '',
     tokensIn: 0,
     tokensOut: 0,
+    contextWindow: null,
     listeners: new Set(),
   });
 
@@ -187,6 +193,7 @@ export function getLlmState(): LlmState {
     progressText: slot.progressText,
     tokensIn: slot.tokensIn,
     tokensOut: slot.tokensOut,
+    contextWindow: slot.contextWindow ?? null,
     version: WEBLLM_VERSION,
   };
 }
@@ -219,6 +226,23 @@ function resetSlot(): void {
   slot.progressText = '';
   slot.tokensIn = 0;
   slot.tokensOut = 0;
+  slot.contextWindow = null;
+}
+
+/**
+ * The context window of a freshly loaded model, in tokens: the engine's own
+ * chat config (overrides applied) when readable, else the catalogue's override.
+ */
+function contextWindowOf(wl: WebllmModule, engine: Engine, id: string): number | null {
+  // Not part of the typed API: read defensively, the catalogue is the fallback.
+  const configs = (
+    engine as { loadedModelIdToChatConfig?: Map<string, { context_window_size?: number }> }
+  ).loadedModelIdToChatConfig;
+  const fromEngine = configs?.get?.(id)?.context_window_size;
+  if (fromEngine && fromEngine > 0) return fromEngine;
+  const record = wl.prebuiltAppConfig?.model_list?.find((m) => m.model_id === id);
+  const fromCatalog = record?.overrides?.context_window_size;
+  return fromCatalog && fromCatalog > 0 ? fromCatalog : null;
 }
 
 /* --------------------------- engine plumbing -------------------------- */
@@ -431,6 +455,7 @@ export async function ensureModel(opts: EnsureOptions): Promise<Session | null> 
     });
     slot.engine = engine;
     slot.modelId = id;
+    slot.contextWindow = contextWindowOf(wl, engine, id);
     slot.loading = false;
     slot.progress = 1;
     emit();
@@ -472,6 +497,7 @@ export async function llmChat(req: ChatRequest): Promise<ChatResult> {
     temperature: req.temperature ?? (req.schema ? 0 : 0.7),
     stream,
   };
+  if (req.maxTokens) body.max_tokens = req.maxTokens;
   if (stream) body.stream_options = { include_usage: true };
   if (req.schema)
     body.response_format = { type: 'json_object', schema: JSON.stringify(req.schema) };

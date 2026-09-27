@@ -185,7 +185,13 @@ describe('dl', () => {
 describe('denree (dynamic reasoning graph, scripted LLM)', () => {
   const commands = [
     { name: 'checkip', desc: 'show your public IP address', alias: [], man: '' },
-    { name: 'weather', desc: 'current weather — e.g. weather Tokyo', alias: [], man: '' },
+    {
+      name: 'weather',
+      desc: 'current weather — e.g. weather Tokyo',
+      alias: [],
+      man: '# WEATHER(1)\n\n## SYNOPSIS\nweather [city]\n',
+    },
+    { name: 'help', desc: 'show this help', alias: [], man: '' },
     { name: 'rm', desc: 'remove', alias: [], man: '' },
     { name: 'pwd', desc: 'print working directory', alias: [], man: '' },
     { name: 'whoami', desc: 'who am I', alias: [], man: '' },
@@ -195,45 +201,66 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
     whoami: 'Ludovic Toinel — Fullstack & Innovation Architect',
     checkip: 'IP 203.0.113.7 · Rennes, Brittany · France',
     'weather Rennes': 'Rennes: 🌦 +14°C, light rain',
+    'help -k forecast':
+      '# 1 command(s) matching "forecast"\nweather current weather\n        ↳ forecast for a city',
   };
 
-  /** Runs denree with an LLM whose replies are picked by `reply(system, user)`. */
-  const runDenree = async (reply: (system: string, user: string) => unknown) => {
+  /**
+   * Runs denree with an LLM whose replies are picked by `reply(system, user)`.
+   * The default goal is short and single-part, so it skips the plan.
+   */
+  const runDenree = async (
+    reply: (system: string, user: string) => unknown,
+    goal = 'what is the weather where I am?',
+    model: { contextWindow?: number; overflowOnce?: boolean; extraCommands?: typeof commands } = {},
+  ) => {
     const ran: string[] = [];
+    let overflowPending = Boolean(model.overflowOnce);
     const calls: string[] = [];
-    const result = await runCommand(
-      'denree',
-      ['what', 'is', 'the', 'weather', 'where', 'I', 'am?'],
-      {
-        ctx: {
-          commands,
-          capture: async (line: string) => {
-            ran.push(line);
-            return { ok: true, stdout: outputs[line] ?? '', stderr: '' };
-          },
-          llm: {
-            state: () => ({ modelId: 'test-model', label: 'Test' }),
-            interrupt: () => {},
-            chat: async (req: { messages: { content: string }[] }) => {
-              const [system, user] = [req.messages[0].content, req.messages[1].content];
-              const kind = system.includes('Split the goal')
-                ? 'plan'
-                : system.includes('Decide the NEXT step')
-                  ? 'decide'
-                  : system.includes('check a command output')
-                    ? 'reflect'
-                    : system.includes('grade an answer')
-                      ? 'critique'
-                      : 'synthesize';
-              calls.push(kind);
-              const value = reply(system, user) ?? {};
-              return { content: typeof value === 'string' ? value : JSON.stringify(value) };
-            },
+    const prompts: { kind: string; system: string; user: string; maxTokens: number }[] = [];
+    const result = await runCommand('denree', goal.split(' '), {
+      ctx: {
+        commands: [...commands, ...(model.extraCommands || [])],
+        capture: async (line: string) => {
+          ran.push(line);
+          return { ok: true, stdout: outputs[line] ?? '', stderr: '' };
+        },
+        llm: {
+          state: () => ({
+            modelId: 'test-model',
+            label: 'Test',
+            contextWindow: model.contextWindow,
+          }),
+          interrupt: () => {},
+          chat: async (req: { messages: { content: string }[]; maxTokens?: number }) => {
+            const [system, user] = [req.messages[0].content, req.messages[1].content];
+            if (overflowPending) {
+              // WebLLM's ContextWindowSizeExceededError: 1 token per character here.
+              overflowPending = false;
+              const tokens = system.length + user.length;
+              calls.push('overflow');
+              throw new Error(
+                `Prompt tokens exceed context window size: number of prompt tokens: ${tokens}; context window size: 4096`,
+              );
+            }
+            const kind = system.includes('Split the goal')
+              ? 'plan'
+              : system.includes('Decide the NEXT step')
+                ? 'decide'
+                : system.includes('check a command output')
+                  ? 'reflect'
+                  : system.includes('grade an answer')
+                    ? 'critique'
+                    : 'synthesize';
+            calls.push(kind);
+            prompts.push({ kind, system, user, maxTokens: req.maxTokens ?? 0 });
+            const value = reply(system, user) ?? {};
+            return { content: typeof value === 'string' ? value : JSON.stringify(value) };
           },
         },
       },
-    );
-    return { ...result, ran, calls };
+    });
+    return { ...result, ran, calls, prompts };
   };
 
   it('chains commands: a fact from one output becomes the next argument', async () => {
@@ -291,8 +318,9 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
     // The invented command is rejected without running; the fix runs.
     expect(ran).toEqual(['checkip']);
     expect(out.join('\n')).toContain('command "ipconfig" does not exist here.');
-    expect(calls.slice(0, 5)).toEqual(['plan', 'decide', 'reflect', 'decide', 'reflect']);
-    expect(out.at(-1)).toMatch(/1 command\(s\) · \d+ LLM call\(s\) · confidence 8\/10/);
+    // Short goal: no plan. Settled with facts: one draft, no critique.
+    expect(calls).toEqual(['decide', 'reflect', 'decide', 'reflect', 'decide', 'synthesize']);
+    expect(out.at(-1)).toMatch(/1 command\(s\) · 6 LLM call\(s\) · model/);
   });
 
   it('does not loop on a repeated command: falls back on the plan, then stops', async () => {
@@ -314,13 +342,122 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
       }
       if (system.includes('grade an answer')) return { score: 9, missing: '', command: '' };
       return 'You are Ludovic Toinel.';
-    });
+    }, 'where am I and who am I?');
+    expect(calls[0]).toBe('plan'); // a multi-part goal is planned
     expect(ran).toEqual(['pwd', 'whoami']);
     expect(out.join('\n')).toContain('"pwd" already ran — trying "whoami" instead');
     expect(out.join('\n')).toContain('stuck repeating "pwd"');
     // A few decisions, not the 12-step budget.
     expect(calls.filter((c) => c === 'decide').length).toBeLessThanOrEqual(4);
     expect(out.join('\n')).toContain('✦ answer › You are Ludovic Toinel.');
+  });
+
+  it('critiques only an unsettled investigation, and runs the missing command', async () => {
+    const { ran, calls, out } = await runDenree((system, user) => {
+      if (system.includes('Decide the NEXT step')) {
+        return user.includes('$ checkip')
+          ? { thought: 'nothing else to run', action: 'answer', command: '' }
+          : { thought: 'locate', action: 'run', command: 'checkip' };
+      }
+      if (system.includes('check a command output')) {
+        return user.includes('Command: checkip')
+          ? { useful: false, facts: '', problem: 'no weather in it', goal_answered: false }
+          : { useful: true, facts: 'Rennes: +14°C', problem: '', goal_answered: true };
+      }
+      if (system.includes('grade an answer')) {
+        return user.includes('14°C')
+          ? { score: 9, missing: '', command: '' }
+          : { score: 3, missing: 'the weather', command: 'weather Rennes' };
+      }
+      return user.includes('Rennes: +14°C') ? 'It is 14°C.' : 'I could not find it.';
+    });
+    expect(ran).toEqual(['checkip', 'weather Rennes']);
+    expect(calls.filter((c) => c === 'critique').length).toBe(2);
+    expect(out.join('\n')).toContain('✦ answer › It is 14°C.');
+  });
+
+  it('keeps a help -k lookup for the next decision, with the manual it points at', async () => {
+    const { ran, calls, prompts } = await runDenree((system, user) => {
+      if (system.includes('Decide the NEXT step')) {
+        if (!user.includes('$ help -k forecast'))
+          return { thought: 'find a command', action: 'run', command: 'help -k forecast' };
+        if (!user.includes('$ weather'))
+          return { thought: 'use it', action: 'run', command: 'weather Rennes' };
+        return { thought: 'done', action: 'answer', command: '' };
+      }
+      if (system.includes('check a command output'))
+        return { useful: true, facts: 'Rennes: +14°C', problem: '', goal_answered: true };
+      return 'It is 14°C.';
+    });
+    expect(ran).toEqual(['help -k forecast', 'weather Rennes']);
+    // The lookup skips the reflect step…
+    expect(calls.slice(0, 3)).toEqual(['decide', 'decide', 'reflect']);
+    // …and the next decision sees it, plus the manual of the command it found.
+    const second = prompts.filter((p) => p.kind === 'decide')[1];
+    expect(second.user).toContain('Command lookups (help / man):\n$ help -k forecast');
+    expect(second.system).toContain('### weather\nSYNOPSIS\nweather [city]');
+  });
+
+  it('adapts to a small context window: compact command list, prompts within the window', async () => {
+    const long = 'Rennes: +14°C, light rain. '.repeat(40); // ~1k characters per fact
+    const { prompts, out } = await runDenree(
+      (system, user) => {
+        if (system.includes('Decide the NEXT step')) {
+          if (!user.includes('$ checkip'))
+            return { thought: '', action: 'run', command: 'checkip' };
+          if (!user.includes('$ weather'))
+            return { thought: '', action: 'run', command: 'weather Rennes' };
+          return { thought: '', action: 'answer', command: '' };
+        }
+        if (system.includes('check a command output'))
+          return { useful: true, facts: long, problem: '', goal_answered: false };
+        return 'It is 14°C.';
+      },
+      undefined,
+      {
+        contextWindow: 1024,
+        // A realistic catalog: ~40 commands, ~2k characters of descriptions.
+        extraCommands: Array.from({ length: 34 }, (_, i) => ({
+          name: `tool${i}`,
+          desc: 'a sample command with a description of realistic length',
+          alias: [],
+          man: '',
+        })),
+      },
+    );
+    expect(out.join('\n')).toContain('context window: 1024 tokens');
+    const decides = prompts.filter((p) => p.kind === 'decide');
+    // Names only: the descriptions do not fit.
+    expect(decides[0].system).toContain(
+      'Available commands (help -k <keyword> tells what each does): checkip, weather',
+    );
+    expect(decides[0].system).not.toContain('show your public IP address');
+    for (const p of prompts) {
+      // No usage reported ⇒ the first guess (3.2 characters per token) holds.
+      const tokens = (p.system.length + p.user.length) / 3.2;
+      expect(tokens + p.maxTokens).toBeLessThanOrEqual(1024);
+    }
+  });
+
+  it('keeps the full command list in a 4k window', async () => {
+    const { prompts } = await runDenree(() => ({ thought: '', action: 'answer', command: '' }));
+    expect(prompts[0].system).toContain('- checkip: show your public IP address');
+  });
+
+  it('rebuilds a prompt from the exact token count after an overflow', async () => {
+    const { calls, prompts, out } = await runDenree(
+      (system) =>
+        system.includes('Decide the NEXT step')
+          ? { thought: '', action: 'answer', command: '' }
+          : 'Nothing to report.',
+      undefined,
+      { overflowOnce: true },
+    );
+    // The overflowing call is retried once, then the run goes on normally.
+    expect(calls.slice(0, 2)).toEqual(['overflow', 'decide']);
+    expect(out.join('\n')).toContain('✦ answer › Nothing to report.');
+    // 1 character per token measured ⇒ the retry fits in ~4k characters.
+    expect(prompts[0].system.length + prompts[0].user.length).toBeLessThanOrEqual(4096);
   });
 });
 

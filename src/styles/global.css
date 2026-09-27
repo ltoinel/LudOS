@@ -708,6 +708,11 @@ html:not(.js) .ssh-win {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* A blank line (`ctx.line('')`) is an empty div, which would collapse to zero
+   height: give it a zero-width character so it keeps one line of spacing. */
+.ssh-body .ln:empty::before {
+  content: '\200b';
+}
 /* ASCII/blocks art: force a monospace with full box-drawing & block-element
    coverage (IBM Plex Mono lacks them, which breaks alignment), and tighten the
    line-height so solid blocks connect vertically. */
