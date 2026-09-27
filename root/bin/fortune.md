@@ -3,6 +3,7 @@ name: fortune
 desc: a random quote or developer joke — e.g. fortune, fortune -j
 alias: quote
 demo: fortune
+seo_title: Random quote & programming joke — fortune
 man: |
   # FORTUNE(6)
 
@@ -45,7 +46,7 @@ man: |
   quote -q
 
   ## SEE ALSO
-  motd, say, asciiart
+  say, asciiart, motd
 js: |
   const E = ctx.escape;
   const a = ctx.args[0];

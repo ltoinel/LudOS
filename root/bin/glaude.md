@@ -2,6 +2,7 @@
 name: glaude
 desc: builds hideous, flashy websites with a local LLM (WebGPU) — Claude Code style, by "le Glaude"
 alias: soupe
+seo_title: AI website generator — local LLM, 1997 GeoCities style
 man: |
   # GLAUDE(1)
 

@@ -43,7 +43,7 @@ man: |
   todo ls --all
 
   ## SEE ALSO
-  kanban, pomodoro
+  kanban, pomodoro, nano
 js: |
   // Self-contained task store. Tasks live in localStorage under `ltsh.todo`
   // as [{ id, text, status: 'todo'|'doing'|'done', created, updated }] — the

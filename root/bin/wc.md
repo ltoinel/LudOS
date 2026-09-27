@@ -1,7 +1,8 @@
 ---
 name: wc
 desc: count lines, words and bytes — e.g. wc about.md, ls | wc -l
-page: false
+seo_title: Word counter — count words, lines & characters
+demo: wc about.md projects.md contact.md
 man: |
   # WC(1)
 
@@ -28,6 +29,18 @@ man: |
 
   Single-letter flags can be combined, e.g. `wc -lw file`.
 
+  ## USE CASES
+  - count the words of an article, an essay or a cover letter before sending
+    it, or check a text against a word limit;
+  - count the lines of a file or of any command's output: ls | wc -l;
+  - check a text's size in bytes (-c) versus characters (-m): they differ as
+    soon as it contains accents or emoji, which matters for size-limited
+    fields (SMS, tweets, database columns).
+
+  ## NOTES
+  A word is a run of non-blank characters, as in the Unix wc. Everything is
+  counted in your browser: the text is never sent anywhere.
+
   ## EXAMPLES
   wc about.md
   wc -l about.md contact.md
@@ -35,7 +48,7 @@ man: |
   echo "hello world" | wc -w
 
   ## SEE ALSO
-  cat, grep, ls
+  cat, grep, du, bc
 js: |
   // wc — count lines / words / bytes / chars / longest line of files or piped
   // stdin, with the usual -l/-w/-c/-m/-L flags. Mirrors `cat`'s input handling.

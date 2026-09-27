@@ -2,6 +2,7 @@
 name: checkip
 desc: show your public IP address
 demo: checkip
+seo_title: What is my IP address? Public IP & location
 man: |
   # CHECKIP(1)
 
@@ -38,7 +39,7 @@ man: |
   checkip
 
   ## SEE ALSO
-  httpstest, nslookup, ping
+  nslookup, whois, ping, useragent, httpstest
 js: |
   const E = ctx.escape;
   const row = (k, v) =>

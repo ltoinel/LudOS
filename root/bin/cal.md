@@ -3,6 +3,7 @@ name: cal
 desc: show a calendar — e.g. cal, cal 12 2026, cal 2026, cal -3
 alias: calendar
 demo: cal
+seo_title: Calendar with ISO week numbers — cal
 man: |
   # CAL(1)
 
@@ -43,7 +44,7 @@ man: |
   cal -3
 
   ## SEE ALSO
-  date, pomodoro
+  date, pomodoro, todo, bc
 js: |
   const E = ctx.escape;
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',

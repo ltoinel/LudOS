@@ -271,6 +271,33 @@ export interface Route {
   body?: string;
   /** Kept out of search engines (`noindex`, not in the sitemap). */
   noindex?: boolean;
+  /** Page `<title>` for search engines, when it should differ from `title`. */
+  seoTitle?: string;
+}
+
+/**
+ * The short form of a command's `desc`: the part before its examples
+ * ("generate a password — e.g. password 24" → "generate a password").
+ */
+export const shortDesc = (desc: string): string =>
+  desc.split(/ — e\.g\.| \(e\.g\.|, e\.g\./)[0].trim();
+
+/**
+ * Rewrites a man page for its crawlable mirror: the page heading becomes the
+ * NAME line ("sha256sum — compute SHA-256 checksums"), a far better <h1> than
+ * the Unix-style "SHA256SUM(1)", and the now redundant NAME section is dropped.
+ */
+export function manForPage(man: string): string {
+  // The NAME paragraph may wrap over several lines: join them.
+  const section = man.match(/^##\s+NAME\s*\n([\s\S]*?)(?=\n##\s|(?![\s\S]))/m);
+  const name = section?.[1]
+    .trim()
+    .split(/\n\s*\n/)[0]
+    .replace(/\s+/g, ' ');
+  if (!name) return man;
+  return man
+    .replace(/^##\s+NAME\s*\n[\s\S]*?(?=\n##\s|(?![\s\S]))/m, '')
+    .replace(/^#\s+.*$/m, `# ${name}`);
 }
 
 /** Deep-linkable routes: content commands + home documents (one page each). */
@@ -282,6 +309,8 @@ export const routes: Route[] = [
       title: c.name,
       desc: c.desc || `command ${c.name}`,
       noindex: c.index === false, // thin page: reachable, but not indexed
+      // Worded like a search ("QR code generator — …"), else "qr — render …".
+      seoTitle: c.seoTitle || (c.desc ? `${c.name} — ${shortDesc(c.desc)}` : undefined),
     })),
   ...homeDocs.map(({ name, content }) => {
     const slug = name.replace(/\.md$/, '');

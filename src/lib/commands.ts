@@ -31,13 +31,18 @@ export interface CmdDef {
    * origin.
    */
   demo?: string;
+  /**
+   * Search-engine title of the landing page, worded like what people search
+   * (e.g. "Password generator — strong, random, in your browser").
+   */
+  seoTitle?: string;
   js?: string;
   body: string;
 }
 
 /**
  * Parse a command markdown file: YAML-ish frontmatter (`name`, `desc`, an
- * optional comma/space-separated `alias` list, `page: false`, `index: false`, `demo`) plus the multi-line `key: |`
+ * optional comma/space-separated `alias` list, `page: false`, `index: false`, `demo`, `seo_title`) plus the multi-line `key: |`
  * block scalars `man` and `js`, followed by the body.
  *
  * A `key: |` block runs over the indented (and blank) lines that follow it and
@@ -74,6 +79,7 @@ export function parseCommand(raw: string): CmdDef {
       else if (kv[1] === 'page') def.page = kv[2].trim() !== 'false';
       else if (kv[1] === 'index') def.index = kv[2].trim() !== 'false';
       else if (kv[1] === 'demo') def.demo = kv[2].trim();
+      else if (kv[1] === 'seo_title') def.seoTitle = kv[2].trim();
       else if (kv[1] === 'alias') {
         const aliases = kv[2].split(/[\s,]+/).filter(Boolean);
         if (aliases.length) def.alias = aliases;
@@ -111,6 +117,9 @@ export function validateCommand(raw: string, def: CmdDef, file: string): string[
     if (flag && !/^(true|false)$/.test(flag[1].trim()))
       errors.push(`${file}: "${key}" must be true or false (got "${flag[1].trim()}")`);
   }
+  // Search engines cut titles around 60 characters.
+  if (def.seoTitle !== undefined && (def.seoTitle.length < 10 || def.seoTitle.length > 65))
+    errors.push(`${file}: "seo_title" should be 10–65 characters (got ${def.seoTitle.length})`);
   // A demo must run this very command (by name or alias), not something else.
   if (def.demo !== undefined) {
     const head = def.demo.split(/\s+/)[0];

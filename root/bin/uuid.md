@@ -2,6 +2,7 @@
 name: uuid
 desc: generate a random UUID (v4) — e.g. uuid 5
 demo: uuid 5
+seo_title: UUID v4 generator — random UUIDs online
 man: |
   # UUID(1)
 
@@ -38,7 +39,7 @@ man: |
   uuid 5
 
   ## SEE ALSO
-  sha256sum, base64
+  password, sha256sum, jwt
 js: |
   const n = Math.min(Math.max(parseInt(ctx.args[0], 10) || 1, 1), 64);
   // Prefer the native generator; fall back to a getRandomValues-based v4.

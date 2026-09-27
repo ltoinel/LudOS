@@ -25,8 +25,9 @@ man: |
 js: |
   const E = ctx.escape;
 
-  // Logo, drawn by the asciiart command, with the release underneath (a blank
-  // line first, to set it apart from the SSH handshake).
+  // Logo, drawn by the asciiart command, with the release underneath (two
+  // blank lines first, to set it apart from the SSH handshake).
+  ctx.line('');
   ctx.line('');
   await ctx.exec('asciiart', ['-s', 'small', "Lud'OS"]);
   if (ctx.cfg.version) ctx.sysLine(`version ${ctx.cfg.version}`);

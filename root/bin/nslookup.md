@@ -2,6 +2,7 @@
 name: nslookup
 desc: DNS lookup — e.g. nslookup toinel.com
 demo: nslookup %HOST%
+seo_title: DNS lookup online — A, AAAA, MX, TXT, NS records
 man: |
   # NSLOOKUP(1)
 
@@ -37,7 +38,7 @@ man: |
   nslookup toinel.com MX
 
   ## SEE ALSO
-  ping, checkip
+  whois, ping, checkip, httpstest
 js: |
   // Real DNS is unreachable from the browser, so we resolve over DNS-over-HTTPS
   // (Google Public DNS, https://dns.google/resolve) which is CORS-enabled.

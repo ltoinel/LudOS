@@ -2,6 +2,7 @@
 name: pomodoro
 desc: focus timer with a chime — e.g. pomodoro 25, pomodoro stop
 alias: pomo
+seo_title: Pomodoro timer online — focus sessions with breaks
 man: |
   # POMODORO(1)
 
@@ -47,7 +48,7 @@ man: |
   pomodoro stop
 
   ## SEE ALSO
-  cal, date, bell
+  cal, todo, kanban, date
 js: |
   const E = ctx.escape;
   // One timer per page, shared by all shell windows.

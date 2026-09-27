@@ -101,3 +101,14 @@ describe('index + demo frontmatter', () => {
     ]);
   });
 });
+
+describe('seo_title frontmatter', () => {
+  it('parses and bounds the search title', () => {
+    expect(parseCommand(cmd('name: qr\nseo_title: QR code generator — free')).seoTitle).toBe(
+      'QR code generator — free',
+    );
+    expect(validateCommands([['q.md', cmd('name: q\nseo_title: short')]]).errors).toEqual([
+      'q.md: "seo_title" should be 10–65 characters (got 5)',
+    ]);
+  });
+});

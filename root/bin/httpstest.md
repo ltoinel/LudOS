@@ -1,6 +1,7 @@
 ---
 name: httpstest
 desc: check a host's HTTPS security grade — e.g. httpstest toinel.com
+seo_title: HTTPS security test — security headers grade
 man: |
   # HTTPSTEST(1)
 
@@ -41,7 +42,7 @@ man: |
   httpstest geeek.org
 
   ## SEE ALSO
-  checkip, nslookup, ping
+  httperf, whois, nslookup, ping
 js: |
   const E = ctx.escape;
   // Target: the given host (any pasted URL is reduced to its hostname), or the

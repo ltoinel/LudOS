@@ -231,3 +231,39 @@ describe('journal persistence', () => {
     expect(v.readPath('x.txt').content).toBe('y');
   });
 });
+
+describe('completePath (Tab completion)', () => {
+  const make = () => createVfs({ root: makeTree(), home: HOME, storage: null });
+
+  it('completes an absolute fragment, directories ending with /', () => {
+    expect(make().completePath('/bi')).toEqual(['/bin/']);
+    expect(make().completePath('/bin/l')).toEqual(['/bin/ls.md']);
+    expect(make().completePath('/')).toEqual(['/bin/', '/home/']); // /root is denied
+  });
+
+  it('completes relative, ~ and .. fragments', () => {
+    const vfs = make();
+    expect(vfs.completePath('no')).toEqual(['notes.txt']);
+    expect(vfs.completePath('docs/')).toEqual(['docs/cv.md']);
+    expect(vfs.completePath('~/do')).toEqual(['~/docs/']);
+    vfs.chdir('docs');
+    expect(vfs.completePath('../ab')).toEqual(['../about.md']);
+  });
+
+  it('filters directories only for cd, and hides dotfiles unless asked', () => {
+    const tree = makeTree();
+    ((tree.children.home as VDir).children.guest as VDir).children['.bashrc'] = file('x');
+    const vfs = createVfs({ root: tree, home: HOME, storage: null });
+    expect(vfs.completePath('', 'dir')).toEqual(['docs/']);
+    expect(vfs.completePath('')).not.toContain('.bashrc');
+    expect(vfs.completePath('.b')).toEqual(['.bashrc']);
+  });
+
+  it('offers /root only to root, and nothing for a missing directory', () => {
+    const vfs = make();
+    expect(vfs.completePath('/ro')).toEqual([]);
+    vfs.su();
+    expect(vfs.completePath('/ro')).toEqual(['/root/']);
+    expect(vfs.completePath('/nope/x')).toEqual([]);
+  });
+});

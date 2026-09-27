@@ -31,7 +31,7 @@ man: |
   whoami
 
   ## SEE ALSO
-  open
+  open, cat, uname, useragent
 js: |
   // Identity comes from site.config.ts, injected into the shell cfg as `profile`.
   const p = ctx.cfg.profile;

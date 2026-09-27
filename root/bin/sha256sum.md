@@ -2,6 +2,7 @@
 name: sha256sum
 desc: compute a SHA-256 checksum — e.g. sha256sum hello
 demo: sha256sum hello
+seo_title: SHA-256 hash generator — online sha256sum
 man: |
   # SHA256SUM(1)
 
@@ -35,7 +36,7 @@ man: |
   sha256sum hello
 
   ## SEE ALSO
-  md5, base64
+  md5sum, base64, password, jwt
 js: |
   const input = ctx.args.join(' ');
   if (!input) { ctx.error('usage: sha256sum <text>'); return; }

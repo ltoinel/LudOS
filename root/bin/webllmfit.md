@@ -1,6 +1,7 @@
 ---
 name: webllmfit
 desc: which in-browser LLMs fit your machine? (à la llmfit.org)
+seo_title: Which LLM can my GPU run? In-browser model checker
 man: |
   # WEBLLMFIT(1)
 
@@ -39,7 +40,7 @@ man: |
   webllmfit --all
 
   ## SEE ALSO
-  miaougpt, llm, hashcat
+  llm, miaougpt, denree, top
 js: |
   // Self-contained "does it fit?" report. Reads the WebLLM model catalogue
   // (each record carries vram_required_MB + required_features) and weighs it

@@ -39,7 +39,7 @@ man: |
   httperf -n 20 -c 4 geeek.org
 
   ## SEE ALSO
-  ping, httpstest
+  ping, httpstest, top
 js: |
   // HTTP performance benchmark: send `num` requests (`conc` at a time) and
   // report the latency percentiles and throughput. Only opaque (no-cors) round

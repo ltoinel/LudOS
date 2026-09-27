@@ -3,7 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import Dock from '../components/Dock.astro';
 import LlmWidget from '../components/LlmWidget.astro';
 import Terminal from '../components/Terminal.astro';
-import { routes, commandDefs, manToHtml, manMetaDescription, lastmod } from '../lib/content';
+import {
+  routes,
+  commandDefs,
+  manForPage,
+  manToHtml,
+  manMetaDescription,
+  lastmod,
+} from '../lib/content';
 import { site, siteHost } from '../site.config.ts';
 
 // One static page per deep-linkable command / document. Opening the URL boots
@@ -19,11 +26,12 @@ export function getStaticPaths() {
     const man = manByName.get(r.slug) || '';
     // Commands derive their crawlable mirror from the man page; home documents
     // (no man) carry their markdown already rendered to HTML in `r.body`.
-    const manHtml = man ? manToHtml(man, (n) => linkable.has(n)) : r.body || '';
+    const manHtml = man ? manToHtml(manForPage(man), (n) => linkable.has(n)) : r.body || '';
     return {
       params: { command: r.slug },
       props: {
         label: r.title,
+        seoTitle: r.seoTitle,
         desc: r.desc,
         manHtml,
         manDesc: man ? manMetaDescription(man) : '',
@@ -35,8 +43,10 @@ export function getStaticPaths() {
 }
 
 interface Props {
-  /** Command name or document heading — the route title. */
+  /** Command name or document heading — the route title (breadcrumb). */
   label: string;
+  /** Search-engine title (a command's `seo_title`, or name + description). */
+  seoTitle?: string;
   /** Command / document description — the route desc. */
   desc: string;
   /** Server-rendered manual HTML (empty for documents, which have no man page). */
@@ -48,12 +58,16 @@ interface Props {
   /** Thin page kept out of search engines (`index: false`). */
   noindex: boolean;
 }
-const { label, desc, manHtml, manDesc, dateModified, noindex } = Astro.props;
+const { label, seoTitle, desc, manHtml, manDesc, dateModified, noindex } = Astro.props;
 
 // <title> seeds from the route title. The meta description prefers the richer
 // man DESCRIPTION; otherwise the short route desc plus a context suffix (kept
 // under the snippet limit). These also feed Open Graph / Twitter via the Layout.
-const title = `${label} — ${site.name}`;
+// The site name is appended only while the whole title stays short enough
+// not to be cut in search results (~65 characters).
+const base = seoTitle || label;
+const withSite = `${base} | ${site.name}`;
+const title = withSite.length <= 65 ? withSite : base;
 const suffix = ` · interactive terminal of ${siteHost}`;
 const fallback = desc.length + suffix.length <= 160 ? `${desc}${suffix}` : desc;
 const description = manDesc || fallback;

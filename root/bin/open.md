@@ -20,7 +20,7 @@ man: |
   open github
 
   ## SEE ALSO
-  mail, msg
+  whoami, iframed, msg
 js: |
   const keys = Object.keys(ctx.cfg.links).sort();
   if (!ctx.args.length) {

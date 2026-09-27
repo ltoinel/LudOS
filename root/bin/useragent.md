@@ -3,6 +3,7 @@ name: useragent
 desc: show your browser's user agent
 alias: ua
 demo: useragent
+seo_title: What is my user agent? Browser & OS details
 man: |
   # USERAGENT(1)
 
@@ -41,7 +42,7 @@ man: |
   useragent
 
   ## SEE ALSO
-  checkip, uname
+  checkip, uname, whoami
 js: |
   const E = ctx.escape;
   const row = (k, v) =>

@@ -323,3 +323,65 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
     expect(out.join('\n')).toContain('✦ answer › You are Ludovic Toinel.');
   });
 });
+
+describe('du', () => {
+  /** Runs du against a small in-memory tree, from /home/guest. */
+  const runDu = async (args: string[]) => {
+    const { createVfs, vdir } = await import('../src/lib/vfs.ts');
+    const vfs = createVfs({
+      root: vdir({
+        home: vdir({
+          guest: vdir({
+            'about.md': { type: 'file', content: 'x'.repeat(1500) },
+            notes: vdir({
+              'a.txt': { type: 'file', content: 'é'.repeat(100) }, // 200 bytes in UTF-8
+              deep: vdir({ 'b.txt': { type: 'file', content: 'y'.repeat(3000) } }),
+            }),
+          }),
+        }),
+        root: vdir({ 'flag.txt': { type: 'file', content: 'secret' } }),
+      }),
+      home: '/home/guest',
+      storage: null,
+    });
+    return runCommand('du', args, {
+      ctx: {
+        cwd: () => vfs.cwd(),
+        cd: (p?: string) => vfs.chdir(p),
+        list: (p?: string) => vfs.listPath(p),
+        read: (p: string) => vfs.readPath(p),
+      },
+    });
+  };
+  const table = (out: string[]) => out.map((l) => l.replace(/\s+/g, ' '));
+
+  it('lists directories after their contents, in 1K blocks rounded up', async () => {
+    expect(table((await runDu([])).out)).toEqual(['3 ./notes/deep', '4 ./notes', '5 .']);
+  });
+
+  it('summarizes with -s and prints exact bytes with -b', async () => {
+    expect(table((await runDu(['-sb'])).out)).toEqual(['4700 .']);
+    expect(table((await runDu(['-sh', 'notes'])).out)).toEqual(['3.2K notes']);
+  });
+
+  it('shows files with -a, limits depth with -d, adds a total with -c', async () => {
+    expect(table((await runDu(['-ab', 'notes'])).out)).toEqual([
+      '200 notes/a.txt',
+      '3000 notes/deep/b.txt',
+      '3000 notes/deep',
+      '3200 notes',
+    ]);
+    expect(table((await runDu(['-b', '-d', '0'])).out)).toEqual(['4700 .']);
+    expect(table((await runDu(['-bc', 'about.md', 'notes'])).out)).toEqual([
+      '1500 about.md',
+      '3000 notes/deep',
+      '3200 notes',
+      '4700 total',
+    ]);
+  });
+
+  it('reports unreadable or missing paths', async () => {
+    expect((await runDu(['/root'])).err[0]).toMatch(/^du: cannot access '\/root'/);
+    expect((await runDu(['nope'])).err[0]).toMatch(/^du: cannot access 'nope'/);
+  });
+});

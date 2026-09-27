@@ -3,6 +3,7 @@ name: bc
 desc: basic calculator — e.g. bc "2 + 2 * 3", bc "sqrt(2)"
 alias: calc
 demo: bc "2^10 + sqrt(144) * pi"
+seo_title: Scientific calculator online — bc
 man: |
   # BC(1)
 
@@ -43,7 +44,7 @@ man: |
   echo "21 * 2" | bc
 
   ## SEE ALSO
-  date, uuid
+  cal, date, wc
 js: |
   // bc — a safe arithmetic evaluator. The user's expression is tokenized and run
   // through a recursive-descent parser (NOT eval), so it cannot execute code.

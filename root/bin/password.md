@@ -3,6 +3,7 @@ name: password
 desc: generate a strong random password — e.g. password 24, password -n 3 16
 alias: pwgen
 demo: password -n 3
+seo_title: Password generator — strong, random, in your browser
 man: |
   # PASSWORD(1)
 
@@ -46,7 +47,7 @@ man: |
   password -c 24
 
   ## SEE ALSO
-  uuid, sha256sum, hashcat
+  uuid, sha256sum, hashcat, qr
 js: |
   const args = ctx.args.slice();
   let length = 20;

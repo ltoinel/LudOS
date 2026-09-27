@@ -45,7 +45,7 @@ man: |
   top -n 1
 
   ## SEE ALSO
-  hashcat, llm, webllmfit
+  hashcat, llm, du, uname
 js: |
   const E = ctx.escape;
   let delay = 1;

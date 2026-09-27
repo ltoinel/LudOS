@@ -79,6 +79,12 @@ export interface Vfs {
   nodeAt(path: string): VNode | undefined;
   /** Names of the entries in the current directory, optionally filtered. */
   entryNames(kind: 'all' | 'dir' | 'file'): string[];
+  /**
+   * Tab-completion candidates for a typed path fragment (`/bi`, `~/no`,
+   * `../et`, `notes/a`): the matching entries of the fragment's directory,
+   * returned as full fragments, directories ending with `/`.
+   */
+  completePath(fragment: string, kind?: 'all' | 'dir'): string[];
   /** `ls` backend: lists a directory (or a single file), or an error. */
   listPath(arg?: string): { entries?: VfsEntry[]; error?: string };
   /** `cat` backend: reads a file (with implicit `.md`), or an error. */
@@ -210,6 +216,26 @@ export function createVfs(opts: VfsOptions): Vfs {
     return Object.keys(n.children).filter(
       (name) => kind === 'all' || n.children[name].type === kind,
     );
+  }
+
+  /** Tab-completion candidates for a typed path fragment (see the interface). */
+  function completePath(fragment: string, kind: 'all' | 'dir' = 'all'): string[] {
+    // Split at the last `/`: what comes before names the directory to look in,
+    // what follows is the prefix to complete (`/bi` → dir `/`, prefix `bi`).
+    const slash = fragment.lastIndexOf('/');
+    const dirPart = slash === -1 ? '' : fragment.slice(0, slash + 1);
+    const prefix = fragment.slice(slash + 1);
+    const dir = dirPart === '' ? cwd : resolvePath(dirPart);
+    if (denied(dir)) return [];
+    const node = nodeAt(dir);
+    if (node?.type !== 'dir') return [];
+    return Object.keys(node.children)
+      .filter((name) => name.startsWith(prefix))
+      .filter((name) => prefix.startsWith('.') || !name.startsWith('.')) // dotfiles on demand
+      .filter((name) => kind === 'all' || node.children[name].type === 'dir')
+      .filter((name) => !denied(dir === '/' ? `/${name}` : `${dir}/${name}`))
+      .sort()
+      .map((name) => dirPart + name + (node.children[name].type === 'dir' ? '/' : ''));
   }
 
   /** `ls` backend: lists a directory (or a single file), or returns an error. */
@@ -435,6 +461,7 @@ export function createVfs(opts: VfsOptions): Vfs {
     resolvePath,
     nodeAt,
     entryNames,
+    completePath,
     listPath,
     readPath,
     chdir,

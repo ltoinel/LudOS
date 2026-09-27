@@ -2,6 +2,7 @@
 name: ping
 desc: HTTP ping a host — e.g. ping toinel.com
 demo: ping %HOST%
+seo_title: Online ping — HTTP latency test from your browser
 man: |
   # PING(1)
 
@@ -40,7 +41,7 @@ man: |
   ping -c 8 geeek.org
 
   ## SEE ALSO
-  nslookup, checkip
+  httperf, nslookup, checkip
 js: |
   // Browsers can't send ICMP, so this is an "HTTP ping": it measures the
   // round-trip time of opaque (no-cors) fetches to the target URL.

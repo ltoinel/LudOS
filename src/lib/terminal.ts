@@ -716,38 +716,49 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     const v = input.value;
     const m = v.match(/(\S*)$/);
     const frag = m ? m[1] : '';
-    if (!frag) {
+    const head = v.slice(0, v.length - frag.length).trim();
+    // Scope to the current pipeline/redirection segment: the text after the
+    // last `|`, `>` or `>>` operator. Its first token is the command.
+    const afterRedirect = />>?$/.test(head);
+    const seg = afterRedirect ? '> ' : (head.split(/\||>>?/).pop() ?? '').trim();
+    const first = seg.split(/\s+/)[0];
+    if (!frag && seg === '') {
       playBell(); // nothing to complete — ring the bell
       return;
     }
-    const head = v.slice(0, v.length - frag.length).trim();
+
+    // Path candidates are resolved from the fragment itself, so `/bi`,
+    // `~/no` or `../etc/mo` complete like in bash, not just names in the
+    // current directory. Commands complete only in command position, and only
+    // for a bare name.
+    const paths = (kind: 'all' | 'dir' = 'all') => vfs.completePath(frag, kind);
+    const isPath = frag.includes('/');
     let pool: string[];
-    if (/>>?$/.test(head)) {
-      // Completing a redirection target (`… > frag`) — names in the current dir.
-      pool = vfs.entryNames('all');
-    } else {
-      // Scope to the current pipeline/redirection segment: the text after the
-      // last `|`, `>` or `>>` operator. Its first token is the command.
-      const seg = (head.split(/\||>>?/).pop() ?? '').trim();
-      const first = seg.split(/\s+/)[0];
-      if (seg === '') pool = [...Object.keys(commands), ...vfs.entryNames('all')];
-      else if (first === 'open') pool = Object.keys(cfg.links);
-      else if (first === 'cd') pool = vfs.entryNames('dir');
-      else if (first === 'cat' || first === 'ls') pool = vfs.entryNames('all');
-      else pool = [...Object.keys(commands), ...vfs.entryNames('all'), ...Object.keys(cfg.links)];
-    }
+    if (afterRedirect) pool = paths();
+    else if (seg === '') pool = isPath ? paths() : [...Object.keys(commands), ...paths()];
+    else if (first === 'open') pool = Object.keys(cfg.links);
+    else if (first === 'cd') pool = paths('dir');
+    else if (isPath || first === 'cat' || first === 'ls') pool = paths();
+    else pool = [...Object.keys(commands), ...paths(), ...Object.keys(cfg.links)];
 
     const hits = [...new Set(pool)].filter((c) => c.startsWith(frag)).sort();
+    const replaceFragment = (text: string): void => {
+      input.value = v.slice(0, v.length - frag.length) + text;
+    };
     if (hits.length === 1) {
-      input.value = v.slice(0, v.length - frag.length) + hits[0] + ' ';
+      // A directory stays open (`/bin/`) so the next Tab goes inside it.
+      replaceFragment(hits[0].endsWith('/') ? hits[0] : `${hits[0]} `);
     } else if (hits.length > 1) {
       // Complete up to the longest common prefix; otherwise list the candidates
-      // and ring the bell — ambiguous and can't extend, like readline.
+      // (their last path segment, as bash does) and ring the bell.
       let common = hits[0];
       for (const h of hits) while (!h.startsWith(common)) common = common.slice(0, -1);
-      if (common.length > frag.length) input.value = v.slice(0, v.length - frag.length) + common;
+      if (common.length > frag.length) replaceFragment(common);
       else {
-        append(`<div class="ln comment">${hits.join('  ')}</div>`);
+        const names = hits.map(
+          (h) => h.replace(/\/$/, '').split('/').pop() + (h.endsWith('/') ? '/' : ''),
+        );
+        append(`<div class="ln comment">${escapeHtml(names.join('  '))}</div>`);
         playBell();
       }
     } else {
@@ -828,6 +839,9 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     const pos = input.selectionStart ?? val.length;
 
     if (e.key === 'Enter') {
+      // The line is handled here: the key must not reach whatever the command
+      // focuses next (e.g. nano's text area) as a newline.
+      e.preventDefault();
       input.value = '';
       renderInput();
       await runTyped(val);

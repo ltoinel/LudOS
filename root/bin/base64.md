@@ -2,6 +2,7 @@
 name: base64
 desc: encode/decode base64 — e.g. base64 hello, base64 -d aGVsbG8=
 demo: base64 Hello, world!
+seo_title: Base64 encode & decode online (UTF-8)
 man: |
   # BASE64(1)
 
@@ -39,7 +40,7 @@ man: |
   base64 -d aGVsbG8=
 
   ## SEE ALSO
-  sha256sum, echo
+  jwt, sha256sum, qr
 js: |
   // `-d` / `--decode` flips to decoding; everything else is the payload.
   const decode = ctx.args[0] === '-d' || ctx.args[0] === '--decode';

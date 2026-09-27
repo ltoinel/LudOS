@@ -30,7 +30,7 @@ man: |
   dl -o my-notes.zip ~
 
   ## SEE ALSO
-  ls, tree, cat
+  ls, tree, du, cat
 js: |
   // Self-contained ZIP writer: "stored" entries (no compression — the files
   // are small text), CRC-32 checksums, UTF-8 names. Format: APPNOTE.TXT (PKWARE).

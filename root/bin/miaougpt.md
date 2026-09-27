@@ -2,6 +2,7 @@
 name: miaougpt
 desc: chat with a local AI cat (WebGPU, fully in-browser) — e.g. miaougpt
 alias: chat
+seo_title: Local AI chat in your browser — WebGPU LLM, no server
 man: |
   # MIAOUGPT(1)
 
@@ -44,7 +45,7 @@ man: |
   miaougpt Llama-3.2-3B-Instruct
 
   ## SEE ALSO
-  llm, glaude, denree
+  llm, denree, webllmfit, glaude
 js: |
   // miaougpt — pure chat on top of the central LLM module (ctx.llm). All the
   // loading/consent/cache lives in src/lib/llm.ts; this command just proposes a

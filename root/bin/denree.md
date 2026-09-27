@@ -2,6 +2,7 @@
 name: denree
 desc: reasoning AI agent (local LLM, WebGPU) that drives the terminal — e.g. denree "what's the weather in Rennes?"
 alias: agent ?
+seo_title: Local AI agent in your browser — reasons with tools
 man: |
   # DENREE(1)
 
@@ -68,7 +69,7 @@ man: |
   denree --unload
 
   ## SEE ALSO
-  miaougpt, glaude, llm, help, man
+  miaougpt, glaude, llm, webllmfit, help
 js: |
   // denree — an autonomous agent reasoned by a local LLM (via ctx.llm), which
   // explores a REASONING GRAPH to reach the best answer:
@@ -102,7 +103,7 @@ js: |
   const DENY = new Set([
     'rm', 'su', 'sudo', 'exit', 'clear', 'boot', 'msg', 'open', 'iframed', 'theme',
     'bell', 'miaougpt', 'llm', 'glaude', 'denree', 'shutdown', 'reboot', 'dl',
-    'pomodoro', 'say', 'top', 'hashcat', 'todo', 'history', 'httperf',
+    'pomodoro', 'say', 'top', 'hashcat', 'todo', 'history', 'httperf', 'nano',
   ]);
 
   // ------------------------------------------------------------------ options

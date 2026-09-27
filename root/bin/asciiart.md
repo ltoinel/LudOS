@@ -3,6 +3,7 @@ name: asciiart
 desc: turn text into ASCII art — e.g. asciiart Hello, asciiart -s 3d Hi
 alias: banner
 demo: asciiart -s 3d Hello
+seo_title: ASCII art text generator — 10 banner styles
 man: |
   # ASCIIART(1)
 

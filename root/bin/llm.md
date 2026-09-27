@@ -1,6 +1,7 @@
 ---
 name: llm
 desc: manage the central local LLM engine (loaded model, tokens, cache, GPU)
+seo_title: Run LLMs in your browser — WebLLM model manager
 man: |
   # LLM(1)
 
@@ -55,7 +56,7 @@ man: |
   llm --rm-all
 
   ## SEE ALSO
-  miaougpt, glaude, denree
+  miaougpt, glaude, denree, webllmfit
 js: |
   // llm — console for the central LLM module (src/lib/llm.ts), exposed via
   // ctx.llm. This command loads nothing itself except --load; it reads state,

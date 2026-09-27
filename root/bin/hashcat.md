@@ -1,6 +1,7 @@
 ---
 name: hashcat
 desc: brute-force an MD5 hash on every CPU core — e.g. hashcat -m 0 -a 3 <md5>
+seo_title: MD5 hash cracker in your browser — multi-core
 man: |
   # HASHCAT(1)
 
@@ -44,7 +45,7 @@ man: |
   hashcat -b
 
   ## SEE ALSO
-  md5, sha256sum, base64
+  md5sum, sha256sum, password, top
 js: |
   const E = ctx.escape;
   const args = ctx.args.slice();
