@@ -1,0 +1,51 @@
+name: Checks
+
+# The full verification suite, shared by CI (every push / pull request) and by
+# the release workflow, so a release can never run a different set of checks.
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to run on (engines >=22.23.4, native TS)'
+        type: string
+        default: '24.x'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks (Node ${{ inputs.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: page dates (sitemap, JSON-LD) come from `git log`.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Validate commands
+        run: npm run check:commands
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
