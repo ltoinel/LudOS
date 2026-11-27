@@ -149,3 +149,20 @@ function nextPipe(line: string, from: number): number {
   }
   return line.length;
 }
+
+/**
+ * Expands a user-defined alias (the `alias` command) for one stage. An alias
+ * stands for a single command with leading arguments (`ll` → `ls -la`); the
+ * stage's own arguments are appended. Expansion happens once — the result is
+ * not looked up again — so `alias ls='ls -a'` runs the real `ls` instead of
+ * looping. A value that is not a single plain command (a pipeline, a
+ * redirection, a syntax error) is ignored and the stage is returned as typed.
+ */
+export function expandAlias(stage: Stage, aliases: Record<string, unknown>): Stage {
+  const value = Object.hasOwn(aliases, stage.name) ? aliases[stage.name] : undefined;
+  if (typeof value !== 'string') return stage;
+  const parsed = parseCommandLine(value);
+  if (parsed.error || parsed.redirect || parsed.stages.length !== 1) return stage;
+  const target = parsed.stages[0];
+  return { name: target.name, args: [...target.args, ...stage.args], raw: stage.raw };
+}

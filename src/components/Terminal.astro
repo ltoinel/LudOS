@@ -1,6 +1,7 @@
 ---
 import { site, openLinks, siteHost } from '../site.config.ts';
 import pkg from '../../package.json';
+import { escapeHtml } from '../lib/html.ts';
 
 // Runtime config injected into the client shell (read back via #shell-cfg). It is
 // tiny, so it stays inline; the large filesystem + command registry are fetched
@@ -25,6 +26,26 @@ const cfg = {
   },
 };
 const safe = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
+
+interface Props {
+  /**
+   * Content shown in the terminal before any script runs — a landing page's
+   * manual or document, as if `command` had just been typed. It is the page's
+   * real, visible text (what search engines index, and the first paint); the
+   * shell keeps it on boot instead of running the command again.
+   */
+  prerender?: { command: string; html: string };
+}
+const { prerender } = Astro.props;
+
+// The echoed command line, built as one string: a `.ln` preserves whitespace,
+// so the markup must not carry the template's own line breaks and indentation.
+// (On boot the shell swaps the configured host for the one serving the page.)
+const promptLine = prerender
+  ? `<span class="prompt-user">${escapeHtml(`${site.shell.user}@${siteHost}`)}</span>` +
+    '<span class="comment">:</span><span class="prompt-path">~</span>' +
+    `<span class="prompt">$</span>&nbsp;<span class="cmd">${escapeHtml(prerender.command)}</span>`
+  : '';
 ---
 
 <section class="ssh-win needs-js" id="ssh" aria-label={`Interactive terminal — ${siteHost}`}>
@@ -54,7 +75,16 @@ const safe = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
   </header>
 
   <div class="ssh-body" id="ssh-body" role="log" aria-live="polite" tabindex="-1">
-    <div class="ssh-output" id="ssh-output"></div>
+    <div class="ssh-output" id="ssh-output">
+      {
+        prerender && (
+          <div data-prerendered>
+            <div class="ln" set:html={promptLine} />
+            <article class="man-page ssh-out" set:html={prerender.html} />
+          </div>
+        )
+      }
+    </div>
     <div class="ssh-inputline" id="ssh-inputline" hidden>
       <span class="ssh-prompt" id="ssh-prompt"></span><span
         class="ssh-typed"

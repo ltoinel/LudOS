@@ -73,7 +73,7 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
     <meta property="og:image:width" content="800" />
     <meta property="og:image:height" content="800" />
     <meta property="og:image:type" content="image/jpeg" />
-    <meta property="og:image:alt" content={`Portrait de ${site.name}`} />
+    <meta property="og:image:alt" content={`Portrait of ${site.name}`} />
     <meta property="og:locale" content={site.locale} />
     <meta property="og:site_name" content={site.name} />
     {
@@ -81,7 +81,7 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
         <>
           <meta property="profile:first_name" content={site.firstName} />
           <meta property="profile:last_name" content={site.lastName} />
-          <meta property="profile:gender" content="male" />
+          <meta property="profile:gender" content={site.gender.toLowerCase()} />
         </>
       ) : (
         <>
@@ -120,8 +120,12 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
          green palette via CSS). Keep in sync with src/lib/themes.ts. -->
     <script is:inline>
       document.documentElement.classList.add('js');
-      const t = localStorage.getItem('theme');
-      if (t && t !== 'green') document.documentElement.dataset.theme = t;
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved && saved !== 'green') document.documentElement.dataset.theme = saved;
+      } catch {
+        /* storage blocked (privacy mode) — keep the default theme */
+      }
     </script>
   </head>
 
@@ -194,6 +198,10 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
     <script is:inline>
       if ('serviceWorker' in navigator) {
         addEventListener('load', () => {
+          // Whether a worker already controlled this page when it loaded. On a
+          // first visit there is none: the fresh worker claims the page, which
+          // also fires `controllerchange` — and must NOT reload it.
+          const hadController = Boolean(navigator.serviceWorker.controller);
           navigator.serviceWorker
             .register('/sw.js')
             .then((reg) => {
@@ -229,7 +237,7 @@ const robots = noindex ? 'noindex, follow' : 'index, follow, max-image-preview:l
           // up the fresh build. The guard avoids an infinite reload loop.
           let reloaded = false;
           navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (reloaded) return;
+            if (!hadController || reloaded) return;
             reloaded = true;
             location.reload();
           });

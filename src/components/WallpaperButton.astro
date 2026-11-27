@@ -41,7 +41,7 @@ import { Icon } from 'astro-icon/components';
       layer.style.backgroundImage = `url("${wp.url}")`;
       root.classList.add('wp');
       if (credit) {
-        credit.textContent = `photo : ${wp.credit} ↗`;
+        credit.textContent = `photo: ${wp.credit} ↗`;
         credit.href = wp.link;
         credit.hidden = false;
       }
@@ -53,9 +53,26 @@ import { Icon } from 'astro-icon/components';
     img.src = wp.url;
   }
 
+  // The choice is a convenience: storage may be blocked (privacy mode), and
+  // the button must keep working without it.
+  const readSaved = (): string | null => {
+    try {
+      return localStorage.getItem(KEY);
+    } catch {
+      return null;
+    }
+  };
+  const save = (value: string): void => {
+    try {
+      localStorage.setItem(KEY, value);
+    } catch {
+      /* not persisted — the wallpaper still applies for this visit */
+    }
+  };
+
   // Current index in WALLPAPERS, or -1 for "off". Restore the saved choice.
   let current = -1;
-  const saved = localStorage.getItem(KEY);
+  const saved = readSaved();
   if (saved && saved !== 'off') {
     const i = Number(saved);
     if (Number.isInteger(i) && i >= 0 && i < WALLPAPERS.length) {
@@ -69,10 +86,10 @@ import { Icon } from 'astro-icon/components';
     current = current + 1 >= WALLPAPERS.length ? -1 : current + 1;
     if (current < 0) {
       clear();
-      localStorage.setItem(KEY, 'off');
+      save('off');
     } else {
       apply(current);
-      localStorage.setItem(KEY, String(current));
+      save(String(current));
     }
   });
 </script>

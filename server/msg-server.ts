@@ -3,7 +3,7 @@
  * portal. The `msg <text>` command POSTs to `/api/msg`; nginx proxies that
  * path to this process, which emails the text to the owner through the local
  * MTA (`sendmail -t -i`, e.g. Postfix). Zero dependencies: run it with
- * `node server/msg-server.ts` (Node ≥ 22.18, native TS) — see
+ * `node server/msg-server.ts` (Node ≥ 22.23, native TS) — see
  * `deploy/msg-relay.service.template`.
  *
  * Configuration (environment):
@@ -67,10 +67,10 @@ function readBody(req: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > BODY_MAX) {
-        reject(new Error('too_large'));
-        req.destroy();
-      } else chunks.push(c);
+      // Too large: stop buffering but keep draining the request, so the 413
+      // reply can still be written (destroying the socket would drop it).
+      if (size > BODY_MAX) reject(new Error('too_large'));
+      else chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
@@ -102,6 +102,15 @@ function log(ip: string, result: string, msg: string): void {
   if (!LOG) return;
   const clean = msg.replace(/[\n\r\t]+/g, ' ').slice(0, 120);
   appendFile(LOG, `${new Date().toISOString()}\t${ip}\t${result}\t${clean}\n`).catch(() => {});
+}
+
+/**
+ * The CDN's country hint, kept only when it looks like one (two letters): a
+ * direct client can send any `CF-IPCountry` value, and it ends up in the subject.
+ */
+function countryHint(header: string | string[] | undefined): string {
+  const value = String(header ?? '').toUpperCase();
+  return /^[A-Z]{2}$/.test(value) ? value : '';
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -140,7 +149,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         message: msg,
         ip,
         userAgent: String(req.headers['user-agent'] ?? ''),
-        country: String(req.headers['cf-ipcountry'] ?? ''),
+        country: countryHint(req.headers['cf-ipcountry']),
       }),
     );
   } catch (e) {

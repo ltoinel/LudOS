@@ -94,13 +94,16 @@ js: |
   }
 
   // ---- CRC-32 (IEEE 802.3, reflected polynomial 0xEDB88320) ----
+  // Table-driven: entry `byte` is the CRC of that single byte, obtained by
+  // shifting it out bit by bit.
+  const CRC32_POLYNOMIAL = 0xedb88320;
   const CRC_TABLE = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) {
-      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  for (let byte = 0; byte < 256; byte++) {
+    let remainder = byte;
+    for (let bit = 0; bit < 8; bit++) {
+      remainder = remainder & 1 ? CRC32_POLYNOMIAL ^ (remainder >>> 1) : remainder >>> 1;
     }
-    CRC_TABLE[n] = c >>> 0;
+    CRC_TABLE[byte] = remainder >>> 0;
   }
   const crc32 = (bytes) => {
     let crc = 0xffffffff;

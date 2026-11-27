@@ -22,6 +22,11 @@ export interface OutputState {
   errSink: string[] | null;
   /** Piped input handed to the running stage (`ctx.stdin`); '' if none. */
   stdin: string;
+  /**
+   * Whether the running stage is fed by a previous one (`ctx.piped`) — the
+   * only way to tell an empty stdin (`grep nomatch f | wc -l`) from no pipe.
+   */
+  piped: boolean;
 }
 
 export interface ExecutorHost {
@@ -43,7 +48,7 @@ export interface CaptureResult {
 }
 
 export function createExecutor(host: ExecutorHost) {
-  const state: OutputState = { capture: null, errSink: null, stdin: '' };
+  const state: OutputState = { capture: null, errSink: null, stdin: '', piped: false };
 
   /** Persists a redirection's captured output (`>` truncates, `>>` appends). */
   function writeRedirect(redirect: Redirect, out: string[]): void {
@@ -66,6 +71,7 @@ export function createExecutor(host: ExecutorHost) {
   ): Promise<string[] | null> {
     let last: string[] | null = null;
     state.stdin = ''; // the first stage has no stdin
+    state.piped = false;
     for (let i = 0; i < stages.length; i++) {
       const isLast = i === stages.length - 1;
       const buf = !isLast || captureLast || redirect ? [] : null;
@@ -77,6 +83,7 @@ export function createExecutor(host: ExecutorHost) {
       }
       last = buf;
       state.stdin = buf ? buf.join('\n') : '';
+      state.piped = true; // every later stage reads the previous one
     }
     if (redirect && last) writeRedirect(redirect, last);
     return last;
@@ -97,6 +104,7 @@ export function createExecutor(host: ExecutorHost) {
       } finally {
         state.capture = null;
         state.stdin = '';
+        state.piped = false;
       }
     },
 

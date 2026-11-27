@@ -267,3 +267,41 @@ describe('completePath (Tab completion)', () => {
     expect(vfs.completePath('/nope/x')).toEqual([]);
   });
 });
+
+describe('names inherited from Object.prototype', () => {
+  /** A tree as the shell receives it: parsed from JSON, with plain-object children. */
+  const jsonTree = (): VDir => JSON.parse(JSON.stringify(makeTree())) as VDir;
+
+  it('treats `constructor`, `toString` and `__proto__` as ordinary, absent names', () => {
+    const vfs = createVfs({ root: jsonTree(), home: HOME, storage: null });
+    expect(vfs.readPath('constructor').error).toBe('No such file or directory');
+    expect(vfs.readPath('/toString').error).toBe('No such file or directory');
+    expect(vfs.nodeAt('/home/guest/__proto__')).toBeUndefined();
+  });
+
+  it('writes a file named `__proto__` without touching Object.prototype', () => {
+    const vfs = createVfs({ root: jsonTree(), home: HOME, storage: null });
+    expect(vfs.mutate('write', '__proto__', { content: 'x' })).toBeNull();
+    expect(({} as { content?: string }).content).toBeUndefined();
+    expect(vfs.readPath('__proto__').content).toBe('x');
+    expect(vfs.mutate('mkdir', 'valueOf', {})).toBeNull();
+    expect(vfs.nodeAt('/home/guest/valueOf/hasOwnProperty')).toBeUndefined();
+  });
+});
+
+describe('a journal shared by several shell windows', () => {
+  it('keeps the changes of every window, whatever the order of the writes', () => {
+    const storage = memStorage();
+    const first = createVfs({ root: makeTree(), home: HOME, storage });
+    const second = createVfs({ root: makeTree(), home: HOME, storage });
+    first.mutate('write', 'from-first.txt', { content: '1' });
+    second.mutate('write', 'from-second.txt', { content: '2' });
+    first.mutate('mkdir', 'later', {});
+
+    // A fresh session replays the journal: nothing was overwritten.
+    const reloaded = createVfs({ root: makeTree(), home: HOME, storage });
+    expect(reloaded.readPath('from-first.txt').content).toBe('1');
+    expect(reloaded.readPath('from-second.txt').content).toBe('2');
+    expect(reloaded.nodeAt('/home/guest/later')?.type).toBe('dir');
+  });
+});

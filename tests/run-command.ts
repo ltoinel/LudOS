@@ -55,6 +55,7 @@ export async function runCommand(
     args,
     body: def.body,
     stdin: opts.stdin ?? '',
+    piped: opts.stdin !== undefined,
     escape: escapeHtml,
     line: (t: string) => out.push(t),
     raw: (t: string) => out.push(t),

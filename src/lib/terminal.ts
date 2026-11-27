@@ -18,11 +18,11 @@ import { THEMES, applyTheme, currentTheme } from './themes';
 import { escapeHtml } from './html';
 import { createVfs, vdir, type VDir } from './vfs';
 import { raiseZ, nextCascadeOffset, makeWindowChrome, spawnIframe } from './windows';
-import { type Stage } from './shell-parse';
+import { expandAlias, type Stage } from './shell-parse';
 import { createExecutor } from './executor';
 import type { CmdDef } from './commands';
 import type { ShellCfg, ShellCtx } from './shell-ctx';
-import { listWorkers, spawnWorker } from './workers';
+import { killWorker, listWorkers, spawnWorker } from './workers';
 import {
   ensureModel,
   llmChat,
@@ -193,25 +193,29 @@ export { escapeHtml };
  * Supports http(s) links (new tab) and `mailto:` links (mail client, same context).
  */
 export function inline(s: string): string {
-  let out = escapeHtml(s);
+  // Finished links are parked behind a placeholder while bold / code are
+  // applied, so a `**` or a backtick inside a URL can't be turned into markup
+  // in the middle of the `href` attribute. NUL never occurs in real text.
+  const links: string[] = [];
+  const park = (html: string): string => `\u0000${links.push(html) - 1}\u0000`;
+  let out = escapeHtml(s.replaceAll('\u0000', ''));
   out = out.replace(
     /\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g,
     (_m, text: string, url: string) => {
       const attrs = url.startsWith('mailto:') ? '' : ' target="_blank" rel="noopener"';
-      return `<a href="${url}"${attrs} class="tlink">${text}</a>`;
+      return park(`<a href="${url}"${attrs} class="tlink">${text}</a>`);
     },
   );
   // Internal command links — `[ls](command:ls)`, emitted by the man "SEE ALSO"
   // section. Not a navigation: the click/Enter handler in `initTerminal` opens
   // that command's manual in place (matched via the `data-cmd` attribute).
-  out = out.replace(
-    /\[([^\]]+)\]\(command:([\w-]+)\)/g,
-    (_m, text: string, name: string) =>
-      `<a class="tlink" role="link" tabindex="0" data-cmd="${name}">${text}</a>`,
+  out = out.replace(/\[([^\]]+)\]\(command:([\w-]+)\)/g, (_m, text: string, name: string) =>
+    park(`<a class="tlink" role="link" tabindex="0" data-cmd="${name}">${text}</a>`),
   );
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong class="cmd">$1</strong>');
   out = out.replace(/`([^`]+)`/g, '<span class="prompt-path">$1</span>');
-  return out;
+  // eslint-disable-next-line no-control-regex -- the NUL-delimited placeholders above
+  return out.replace(/\u0000(\d+)\u0000/g, (_m, index: string) => links[Number(index)]);
 }
 
 /**
@@ -338,8 +342,11 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   const HISTORY_MAX = 100;
   let cmdHistory: string[] = [];
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (raw) cmdHistory = JSON.parse(raw) as string[];
+    // Validate the shape: anything but a list of strings (a hand-edited or
+    // corrupt entry) would break history navigation later on.
+    const stored: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    if (Array.isArray(stored))
+      cmdHistory = stored.filter((entry): entry is string => typeof entry === 'string');
   } catch {
     /* ignore unreadable / corrupt history */
   }
@@ -499,8 +506,12 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   // Commands are parsed at build time and injected as `#shell-commands`.
   const cmdDefs = readJSON<CmdDef[]>('shell-commands', []);
 
-  /** Runtime command registry, keyed by name (populated from the definitions). */
-  const commands: Record<string, Cmd> = {};
+  /**
+   * Runtime command registry, keyed by name (populated from the definitions).
+   * Prototype-less: the keys are whatever the visitor types, so `constructor`
+   * or `toString` must not resolve to members of `Object.prototype`.
+   */
+  const commands: Record<string, Cmd> = Object.create(null) as Record<string, Cmd>;
 
   /**
    * API object handed to a dynamic command's `js`. Authored content is trusted,
@@ -513,6 +524,8 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       cfg,
       // Text piped in from a previous pipeline stage (`prev | cmd`); '' if none.
       stdin: out().stdin,
+      // True when a previous stage feeds this one, even with an empty stdin.
+      piped: out().piped,
       history: cmdHistory,
       commands: cmdDefs.map((d) => ({
         name: d.name,
@@ -576,6 +589,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
       worker: (url: string | URL, name?: string, opts?: WorkerOptions) =>
         spawnWorker(url, name, opts),
       workers: () => listWorkers(),
+      killWorker: (id: number) => killWorker(id),
       // The single, central LLM manager (src/lib/llm.ts) wired to this terminal:
       // `ensure` asks for consent in the shell and draws a progress bar; `chat`
       // routes generation through the manager so the top-right widget stays in
@@ -656,8 +670,22 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
 
   /* --------------------------- execution ---------------------------- */
 
+  // User-defined aliases (the `alias` command), persisted in localStorage as a
+  // `{ name: command line }` map and re-read on every stage, so a definition
+  // made in another shell window applies here too.
+  const ALIASES_KEY = 'ltsh.aliases';
+  const readAliases = (): Record<string, unknown> => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(ALIASES_KEY) || '{}');
+      return stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {};
+    } catch {
+      return {}; // storage blocked or corrupt — no alias
+    }
+  };
+
   executor = createExecutor({
-    runStage: async (stage: Stage) => {
+    runStage: async (typed: Stage) => {
+      const stage = expandAlias(typed, readAliases());
       const cmd = commands[stage.name];
       if (cmd) return cmd.run(stage.args);
       // Not a command: try the path as a file (implicit `cat`) in the current dir.
@@ -735,7 +763,10 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     const isPath = frag.includes('/');
     let pool: string[];
     if (afterRedirect) pool = paths();
-    else if (seg === '') pool = isPath ? paths() : [...Object.keys(commands), ...paths()];
+    else if (seg === '')
+      pool = isPath
+        ? paths()
+        : [...Object.keys(commands), ...Object.keys(readAliases()), ...paths()];
     else if (first === 'open') pool = Object.keys(cfg.links);
     else if (first === 'cd') pool = paths('dir');
     else if (isPath || first === 'cat' || first === 'ls') pool = paths();
@@ -933,7 +964,17 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
   async function boot(): Promise<void> {
     busy = true;
     inputline.hidden = true;
-    output.innerHTML = '';
+    // A landing page ships its manual (or document) already rendered in the
+    // output, as if the command had just been typed (see Terminal.astro): keep
+    // it rather than wiping it and printing the same text again.
+    const prerendered = allowDeepLink ? output.querySelector('[data-prerendered]') : null;
+    if (prerendered) {
+      // Its prompt was built with the configured host; show the serving one.
+      const promptUser = prerendered.querySelector('.prompt-user');
+      if (promptUser) promptUser.textContent = `${cfg.user}@${cfg.host}`;
+    } else {
+      output.innerHTML = '';
+    }
     win.classList.remove('closed');
 
     // A deep link (e.g. /cal, reached from the sitemap or a search result)
@@ -949,7 +990,13 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
     const demo = isCommand ? cmdDefs.find((d) => d.name === slug)?.demo : undefined;
     if (demo) {
       await run(demo.replaceAll('%HOST%', location.hostname).replaceAll('%URL%', location.origin));
-      sysLine(`→ man ${slug} for the full manual · help for every command`);
+      sysLine(
+        prerendered
+          ? '→ the manual is just above · help for every command'
+          : `→ man ${slug} for the full manual · help for every command`,
+      );
+    } else if (prerendered) {
+      // The manual / document is already on screen: nothing to run.
     } else if (isCommand) await run(`man ${slug}`);
     else if (isDeepLink) await run(slug);
     else if (commands['boot']) await commands['boot'].run([]);
@@ -974,7 +1021,12 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
    */
   function closeWin(): void {
     win.classList.add('closed');
-    if (win.id !== 'ssh') setTimeout(() => win.remove(), reduce ? 0 : 260);
+    if (win.id === 'ssh') return;
+    // A spawned window is gone for good: forget its shell handle too.
+    const index = shells.indexOf(handle);
+    if (index >= 0) shells.splice(index, 1);
+    if (activeShell === handle) activeShell = null;
+    setTimeout(() => win.remove(), reduce ? 0 : 260);
   }
 
   // Drag, raise-to-front, minimize / maximize and the title-bar buttons — the

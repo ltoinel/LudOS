@@ -24,7 +24,10 @@ man: |
   mkdir, rm, ls
 js: |
   const files = ctx.args.filter((a) => !a.startsWith('-'));
-  if (!files.length) { ctx.error('usage: touch <file...>'); return; }
+  if (!files.length) {
+    ctx.error('usage: touch <file...>');
+    return;
+  }
   for (const f of files) {
     const err = ctx.touch(f);
     if (err) ctx.error(`touch: ${err}`);

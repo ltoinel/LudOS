@@ -44,19 +44,26 @@ js: |
   // HTTP performance benchmark: send `num` requests (`conc` at a time) and
   // report the latency percentiles and throughput. Only opaque (no-cors) round
   // trips can be timed, exactly like ping.
-  let num = 10;
-  let conc = 1;
-  const rest = [];
+  // Both are capped: this is a courtesy benchmark, not a load generator.
+  const DEFAULT_REQUESTS = 10;
+  const MAX_REQUESTS = 50;
+  const DEFAULT_CONCURRENCY = 1;
+  const MAX_CONCURRENCY = 10;
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  let num = DEFAULT_REQUESTS;
+  let conc = DEFAULT_CONCURRENCY;
+  const positional = [];
   for (let i = 0; i < ctx.args.length; i++) {
-    const a = ctx.args[i];
-    if (a === '-n' && ctx.args[i + 1])
-      num = Math.max(1, Math.min(50, parseInt(ctx.args[++i], 10) || 10));
-    else if (a === '-c' && ctx.args[i + 1])
-      conc = Math.max(1, Math.min(10, parseInt(ctx.args[++i], 10) || 1));
-    else rest.push(a);
+    const arg = ctx.args[i];
+    // A valued option consumes the next argument (hence the ++i).
+    if (arg === '-n' && ctx.args[i + 1]) {
+      num = clamp(parseInt(ctx.args[++i], 10) || DEFAULT_REQUESTS, 1, MAX_REQUESTS);
+    } else if (arg === '-c' && ctx.args[i + 1]) {
+      conc = clamp(parseInt(ctx.args[++i], 10) || DEFAULT_CONCURRENCY, 1, MAX_CONCURRENCY);
+    } else positional.push(arg);
   }
 
-  const target = rest[0];
+  const target = positional[0];
   if (!target) {
     ctx.error('usage: httperf [-n num] [-c concurrency] <host>');
     return;
@@ -72,16 +79,47 @@ js: |
 
   ctx.line(`httperf ${ctx.escape(host)} — ${num} requests, concurrency ${conc}`);
 
-  const times = [];
+  // Runs `request(signal)` under a timeout. The signal also aborts on Ctrl+C
+  // (ctx.signal); a body read made inside `request` is covered as well.
+  const TIMEOUT_MS = 15000;
+  const withTimeout = async (request) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancel = () => controller.abort();
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel();
+    }, TIMEOUT_MS);
+    if (ctx.signal && ctx.signal.aborted) cancel();
+    ctx.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      return await request(controller.signal);
+    } catch (error) {
+      if (timedOut) {
+        const timeout = new Error(`timed out after ${TIMEOUT_MS / 1000} s`);
+        timeout.name = 'TimeoutError';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', cancel);
+    }
+  };
+
+  const latencies = []; // ms, one per successful request
   let ok = 0;
   let failed = 0;
-  const one = async () => {
-    const t0 = performance.now();
+  const sendOne = async () => {
+    const sentAt = performance.now();
     try {
-      await fetch(url, { mode: 'no-cors', cache: 'no-store', redirect: 'follow', signal: ctx.signal });
-      times.push(performance.now() - t0);
+      await withTimeout((signal) =>
+        fetch(url, { mode: 'no-cors', cache: 'no-store', redirect: 'follow', signal }),
+      );
+      latencies.push(performance.now() - sentAt);
       ok++;
     } catch {
+      // A request cut by Ctrl+C is not a failure of the server.
       if (!(ctx.signal && ctx.signal.aborted)) failed++;
     }
   };
@@ -92,25 +130,35 @@ js: |
     while (started < num) {
       if (ctx.signal && ctx.signal.aborted) return;
       started++;
-      await one();
+      await sendOne();
     }
   };
-  const wall0 = performance.now();
+  const benchStart = performance.now();
   await Promise.all(Array.from({ length: Math.min(conc, num) }, worker));
-  const wall = (performance.now() - wall0) / 1000; // seconds
+  const wallSeconds = (performance.now() - benchStart) / 1000;
 
   ctx.line('');
   ctx.line(`--- ${host} httperf statistics ---`);
-  ctx.line(`${num} requests, ${ok} ok, ${failed} failed, ${wall.toFixed(2)} s total`);
+  // After Ctrl+C fewer than `num` were sent: report what really went out.
+  const sent = ok + failed;
+  const interrupted = Boolean(ctx.signal && ctx.signal.aborted);
+  ctx.line(
+    `${sent} requests${interrupted ? ` (interrupted, ${num} planned)` : ''}, ` +
+      `${ok} ok, ${failed} failed, ${wallSeconds.toFixed(2)} s total`,
+  );
   if (ok) {
-    ctx.line(`throughput: ${(ok / wall).toFixed(1)} req/s`);
-    const s = times.slice().sort((a, b) => a - b);
-    const pct = (p) => s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
-    const avg = s.reduce((a, b) => a + b, 0) / s.length;
+    ctx.line(`throughput: ${(ok / wallSeconds).toFixed(1)} req/s`);
+    const sorted = latencies.slice().sort((a, b) => a - b);
+    // Nearest-rank percentile: the value below which `percent` % of the samples fall.
+    const percentile = (percent) =>
+      sorted[Math.min(sorted.length - 1, Math.floor((percent / 100) * sorted.length))];
+    const average = sorted.reduce((sum, latency) => sum + latency, 0) / sorted.length;
+    const fastest = sorted[0];
+    const slowest = sorted[sorted.length - 1];
     ctx.line(
-      `latency ms: min ${s[0].toFixed(1)}  avg ${avg.toFixed(1)}  ` +
-        `p50 ${pct(50).toFixed(1)}  p90 ${pct(90).toFixed(1)}  ` +
-        `p95 ${pct(95).toFixed(1)}  max ${s[s.length - 1].toFixed(1)}`,
+      `latency ms: min ${fastest.toFixed(1)}  avg ${average.toFixed(1)}  ` +
+        `p50 ${percentile(50).toFixed(1)}  p90 ${percentile(90).toFixed(1)}  ` +
+        `p95 ${percentile(95).toFixed(1)}  max ${slowest.toFixed(1)}`,
     );
   }
 ---

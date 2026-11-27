@@ -75,6 +75,8 @@ export interface ShellCtx {
   cfg: ShellCfg;
   /** Text piped in from the previous pipeline stage (`prev | cmd`); '' if none. */
   stdin: string;
+  /** Whether a previous stage feeds this command — true even for an empty stdin. */
+  piped: boolean;
   /** Command history (oldest first). */
   history: string[];
   commands: CommandInfo[];
@@ -144,6 +146,8 @@ export interface ShellCtx {
   worker(url: string | URL, name?: string, opts?: WorkerOptions): Worker;
   /** Snapshot of the tracked workers (running and recently finished). */
   workers(): WorkerInfo[];
+  /** Terminates a tracked worker by id; false when none is running under it. */
+  killWorker(id: number): boolean;
 
   llm: ShellLlm;
 }

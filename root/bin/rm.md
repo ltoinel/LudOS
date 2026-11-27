@@ -34,7 +34,10 @@ js: |
   const recursive = /[rR]/.test(flags);
   const force = /f/.test(flags);
   const targets = ctx.args.filter((a) => !a.startsWith('-'));
-  if (!targets.length) { if (!force) ctx.error('usage: rm [-r] [-f] <path...>'); return; }
+  if (!targets.length) {
+    if (!force) ctx.error('usage: rm [-r] [-f] <path...>');
+    return;
+  }
   for (const t of targets) {
     const err = ctx.rm(t, recursive, force);
     if (err) ctx.error(`rm: ${err}`);

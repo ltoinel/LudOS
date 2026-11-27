@@ -42,12 +42,21 @@ js: |
     return;
   }
   // Voices load asynchronously in some browsers (Chrome): wait briefly for them.
-  const voices = async () => {
-    let v = synth.getVoices();
-    if (v.length) return v;
-    await new Promise((r) => {
-      const t = setTimeout(r, 1000);
-      synth.addEventListener('voiceschanged', () => { clearTimeout(t); r(); }, { once: true });
+  const VOICES_WAIT_MS = 1000;
+  const loadVoices = async () => {
+    const available = synth.getVoices();
+    if (available.length) return available;
+    // Whichever comes first: the browser announcing its voices, or the deadline.
+    await new Promise((resolve) => {
+      const deadline = setTimeout(resolve, VOICES_WAIT_MS);
+      synth.addEventListener(
+        'voiceschanged',
+        () => {
+          clearTimeout(deadline);
+          resolve();
+        },
+        { once: true },
+      );
     });
     return synth.getVoices();
   };
@@ -57,41 +66,67 @@ js: |
   let rate = 1;
   let pitch = 1;
   const words = [];
+  // Ranges accepted by the Web Speech API that still sound like speech.
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const MAX_TEXT_LENGTH = 1000; // long utterances are cut off by some browsers
   for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--voices') {
-      const list = await voices();
-      if (!list.length) { ctx.line('no voice available'); return; }
-      list.forEach((v) => ctx.raw(`${v.lang.padEnd(8)} ${v.name}${v.default ? '  (default)' : ''}`));
+    const arg = args[i];
+    if (arg === '--voices') {
+      const installed = await loadVoices();
+      if (!installed.length) {
+        ctx.line('no voice available');
+        return;
+      }
+      installed.forEach((voice) =>
+        ctx.raw(`${voice.lang.padEnd(8)} ${voice.name}${voice.default ? '  (default)' : ''}`),
+      );
       return;
     }
-    if (a === '-l') lang = args[++i] || lang;
-    else if (a === '-r') rate = Math.min(2, Math.max(0.5, parseFloat(args[++i]) || 1));
-    else if (a === '-p') pitch = Math.min(2, Math.max(0, parseFloat(args[++i]) || 1));
-    else words.push(a);
+    // A valued option consumes the next argument (hence the ++i).
+    if (arg === '-l') lang = args[++i] || lang;
+    else if (arg === '-r') rate = clamp(parseFloat(args[++i]) || 1, 0.5, 2);
+    else if (arg === '-p') pitch = clamp(parseFloat(args[++i]) || 1, 0, 2);
+    else words.push(arg);
   }
-  const text = (words.join(' ') || ctx.stdin).trim().slice(0, 1000);
-  if (!text) { ctx.error('usage: say [-l lang] [-r rate] [-p pitch] <text>'); return; }
+  const text = (words.join(' ') || ctx.stdin).trim().slice(0, MAX_TEXT_LENGTH);
+  if (!text) {
+    ctx.error('usage: say [-l lang] [-r rate] [-p pitch] <text>');
+    return;
+  }
 
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang;
-  u.rate = rate;
-  u.pitch = pitch;
-  // Prefer an exact locale match, then a same-language voice.
-  const list = await voices();
-  const low = lang.toLowerCase();
-  u.voice = list.find((v) => v.lang.toLowerCase() === low)
-    || list.find((v) => v.lang.toLowerCase().startsWith(low.split('-')[0])) || null;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang;
+  utterance.rate = rate;
+  utterance.pitch = pitch;
+  // Prefer an exact locale match (fr-FR), then a same-language voice (fr-*).
+  const installed = await loadVoices();
+  const wantedLocale = lang.toLowerCase();
+  const wantedLanguage = wantedLocale.split('-')[0];
+  utterance.voice =
+    installed.find((voice) => voice.lang.toLowerCase() === wantedLocale) ||
+    installed.find((voice) => voice.lang.toLowerCase().startsWith(wantedLanguage)) ||
+    null;
 
   synth.cancel(); // don't queue behind a previous utterance
-  ctx.sysLine(`🔊 ${u.voice ? u.voice.name : lang}…`);
+  ctx.sysLine(`🔊 ${utterance.voice ? utterance.voice.name : lang}…`);
+  // Resolves when the speech ends, fails, or is interrupted with Ctrl+C.
   await new Promise((resolve) => {
-    u.onend = resolve;
-    u.onerror = (e) => {
-      if (e.error !== 'interrupted' && e.error !== 'canceled') ctx.error(`say: ${e.error}`);
+    utterance.onend = resolve;
+    utterance.onerror = (event) => {
+      // Our own cancel() surfaces as an error too: that one is not worth reporting.
+      if (event.error !== 'interrupted' && event.error !== 'canceled') {
+        ctx.error(`say: ${event.error}`);
+      }
       resolve();
     };
-    ctx.signal?.addEventListener('abort', () => { synth.cancel(); resolve(); }, { once: true });
-    synth.speak(u);
+    ctx.signal?.addEventListener(
+      'abort',
+      () => {
+        synth.cancel();
+        resolve();
+      },
+      { once: true },
+    );
+    synth.speak(utterance);
   });
 ---

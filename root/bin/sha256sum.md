@@ -39,11 +39,16 @@ man: |
   md5sum, base64, password, jwt
 js: |
   const input = ctx.args.join(' ');
-  if (!input) { ctx.error('usage: sha256sum <text>'); return; }
+  if (!input) {
+    ctx.error('usage: sha256sum <text>');
+    return;
+  }
   // Hash the UTF-8 bytes via the Web Crypto API, then render as lowercase hex.
   const data = new TextEncoder().encode(input);
   const buf = await crypto.subtle.digest('SHA-256', data);
   const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   // Mirror the real `sha256sum` layout: "<hash>  -" (the dash means stdin).
-  ctx.append(`<div class="ln"><span class="accent">${hex}</span><span class="comment">  -</span></div>`);
+  ctx.append(
+    `<div class="ln"><span class="accent">${hex}</span><span class="comment">  -</span></div>`,
+  );
 ---

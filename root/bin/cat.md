@@ -44,38 +44,68 @@ js: |
   const args = ctx.args.slice();
 
   // Parse combinable flags; collect file operands (in order). `--` ends options.
-  let number = false, numberNonBlank = false, showEnds = false, squeeze = false;
+  let number = false; // -n
+  let numberNonBlank = false; // -b
+  let showEnds = false; // -E
+  let squeeze = false; // -s
   const files = [];
-  let opts = true;
-  for (const a of args) {
-    if (opts && a === '--') { opts = false; continue; }
-    if (opts && a === '-') { files.push('-'); continue; }
-    if (opts && a.length > 1 && a[0] === '-') {
-      let bad = null;
-      for (const ch of a.slice(1)) {
-        if (ch === 'n') number = true;
-        else if (ch === 'b') numberNonBlank = true;
-        else if (ch === 'E') showEnds = true;
-        else if (ch === 's') squeeze = true;
-        else { bad = ch; break; }
-      }
-      if (bad) { ctx.error('cat: invalid option -- ' + bad); return; }
+  let parsingOptions = true;
+  for (const arg of args) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
       continue;
     }
-    files.push(a);
+    // A lone `-` is the stdin operand, not a flag group.
+    if (parsingOptions && arg === '-') {
+      files.push('-');
+      continue;
+    }
+    if (parsingOptions && arg.length > 1 && arg[0] === '-') {
+      let invalidFlag = null;
+      for (const flag of arg.slice(1)) {
+        if (flag === 'n') number = true;
+        else if (flag === 'b') numberNonBlank = true;
+        else if (flag === 'E') showEnds = true;
+        else if (flag === 's') squeeze = true;
+        else {
+          invalidFlag = flag;
+          break;
+        }
+      }
+      if (invalidFlag) {
+        ctx.error('cat: invalid option -- ' + invalidFlag);
+        return;
+      }
+      continue;
+    }
+    files.push(arg);
   }
+
+  // Piped input may be empty (`grep nomatch file | cat`): only ctx.piped tells
+  // an empty pipe from no pipe at all. Older engines lack it: fall back on
+  // "some text came in".
+  const piped = typeof ctx.piped === 'boolean' ? ctx.piped : Boolean(ctx.stdin);
 
   // Resolve the ordered list of sources to print.
   const sources = [];
   if (!files.length) {
-    if (ctx.stdin) sources.push({ name: '-', content: ctx.stdin });
-    else { ctx.error('usage: cat <file>...'); return; }
+    if (piped) sources.push({ name: '-', content: ctx.stdin });
+    else {
+      ctx.error('usage: cat <file>...');
+      return;
+    }
   } else {
-    for (const f of files) {
-      if (f === '-') { sources.push({ name: '-', content: ctx.stdin || '' }); continue; }
-      const res = ctx.read(f);
-      if (res.error) { ctx.error('cat: ' + f + ': ' + res.error); continue; }
-      sources.push({ name: res.name || f, content: res.content });
+    for (const file of files) {
+      if (file === '-') {
+        sources.push({ name: '-', content: ctx.stdin || '' });
+        continue;
+      }
+      const res = ctx.read(file);
+      if (res.error) {
+        ctx.error('cat: ' + file + ': ' + res.error);
+        continue;
+      }
+      sources.push({ name: res.name || file, content: res.content });
     }
   }
 
@@ -83,35 +113,41 @@ js: |
   let lineNo = 1; // continuous across files, like real `cat -n`
 
   // Apply -s/-b/-n/-E to a file's text, returning the transformed string.
+  const NUMBER_WIDTH = 6; // real cat right-aligns line numbers on 6 columns
+  const numberPrefix = () => String(lineNo++).padStart(NUMBER_WIDTH) + '\t';
   const transform = (text) => {
+    // The final newline ends the last line; it is not an extra empty line.
     let lines = text.replace(/\n$/, '').split('\n');
     if (squeeze) {
-      const out = [];
-      let prevBlank = false;
-      for (const l of lines) {
-        const blank = l === '';
-        if (blank && prevBlank) continue;
-        prevBlank = blank;
-        out.push(l);
+      // -s: collapse each run of blank lines into a single one.
+      const squeezed = [];
+      let previousBlank = false;
+      for (const line of lines) {
+        const blank = line === '';
+        if (blank && previousBlank) continue;
+        previousBlank = blank;
+        squeezed.push(line);
       }
-      lines = out;
+      lines = squeezed;
     }
     return lines
-      .map((l) => {
+      .map((line) => {
         let prefix = '';
-        if (numberNonBlank) prefix = l === '' ? '' : String(lineNo++).padStart(6) + '\t';
-        else if (number) prefix = String(lineNo++).padStart(6) + '\t';
-        return prefix + l + (showEnds ? '$' : '');
+        // -b wins over -n and leaves blank lines unnumbered.
+        if (numberNonBlank) prefix = line === '' ? '' : numberPrefix();
+        else if (number) prefix = numberPrefix();
+        return prefix + line + (showEnds ? '$' : '');
       })
       .join('\n');
   };
 
-  for (const src of sources) {
+  for (const source of sources) {
+    if (source.content === '') continue; // nothing to print (empty pipe or file)
     // A lone .md with no flags keeps the rendered view; otherwise print verbatim.
-    if (!flagsActive && src.name !== '-' && src.name.endsWith('.md')) {
-      ctx.print(src.content);
+    if (!flagsActive && source.name !== '-' && source.name.endsWith('.md')) {
+      ctx.print(source.content);
     } else {
-      ctx.raw(transform(src.content));
+      ctx.raw(transform(source.content));
     }
   }
 ---

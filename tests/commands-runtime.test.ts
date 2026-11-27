@@ -40,6 +40,10 @@ describe('todo + kanban', () => {
     const { out } = await runCommand('todo', ['ls']);
     expect(out).toEqual(['  1 [ ] Finir le projet', '  2 [~] Écrire la doc', '2 open · 1 done']);
     expect((await runCommand('todo', ['ls', '--all'])).out).toContain('  3 [x] Démo');
+    // `todo --all` (no sub-command) is documented in the synopsis.
+    const all = await runCommand('todo', ['--all']);
+    expect(all.err).toEqual([]);
+    expect(all.out).toContain('  3 [x] Démo');
   });
 
   it('reports unknown ids and clears done tasks', async () => {
@@ -94,11 +98,204 @@ describe('cal', () => {
   it('validates its arguments', async () => {
     expect((await runCommand('cal', ['13', '2026'])).err[0]).toContain('month');
   });
+
+  it('takes the years 1–99 literally, not as 1900–1999', async () => {
+    const lines = (await runCommand('cal', ['1', '50'])).out[0].split('\n');
+    expect(lines[0].trim()).toBe('January 50');
+    // January 1st, 50 is a Saturday (January 1950 starts on a Sunday).
+    expect(lines[2]).toMatch(/^\d\d {17}1 {2}2$/);
+    expect(lines[3]).toMatch(/^ 1 {2}3 {2}4 {2}5 {2}6 {2}7 {2}8 {2}9$/);
+    // The whole-year view goes through the same dates.
+    const year = (await runCommand('cal', ['50'])).out;
+    expect(year[0].trim()).toBe('50');
+    expect(year[1].split('\n')[2]).toMatch(/^\d\d {17}1 {2}2 /);
+  });
+});
+
+describe('bc', () => {
+  it('evaluates expressions from its arguments or a pipe', async () => {
+    expect((await runCommand('bc', ['2^10', '+', 'sqrt(144)'])).out).toEqual(['1036']);
+    expect((await runCommand('bc', [], { stdin: '1+1; 2*3' })).out).toEqual(['2', '6']);
+  });
+
+  it('rejects characters it does not understand instead of dropping them', async () => {
+    const { out, err } = await runCommand('bc', ['5!']);
+    expect(out).toEqual([]);
+    expect(err).toEqual(['bc: illegal character "!"']);
+    expect((await runCommand('bc', ['2 $ 3'])).err[0]).toContain('illegal character "$"');
+  });
+});
+
+describe('pipes: empty stdin is still a pipe (ctx.piped)', () => {
+  const emptyPipe = { stdin: '', ctx: { piped: true } };
+
+  it('wc counts an empty pipe as zero', async () => {
+    const { out, err } = await runCommand('wc', ['-l'], emptyPipe);
+    expect(err).toEqual([]);
+    expect(out).toEqual(['0']);
+    expect((await runCommand('wc', [], emptyPipe)).out).toEqual(['0 0 0']);
+  });
+
+  it('wc counts the last piped line, which arrives without a line break', async () => {
+    const { out } = await runCommand('wc', ['-l'], { stdin: 'about.md\ncontact.md\nprojects.md' });
+    expect(out).toEqual(['3']);
+  });
+
+  it('wc still asks for a file when nothing is piped', async () => {
+    const { out, err } = await runCommand('wc', ['-l'], { ctx: { piped: false } });
+    expect(out).toEqual([]);
+    expect(err[0]).toContain('usage: wc');
+  });
+
+  it('grep prints nothing for an empty pipe, and filters a full one', async () => {
+    const empty = await runCommand('grep', ['md'], emptyPipe);
+    expect(empty).toEqual({ out: [], err: [] });
+    const full = await runCommand('grep', ['md'], {
+      stdin: 'about.md\nnotes.txt\ncontact.md',
+      ctx: { piped: true },
+    });
+    expect(full.out).toEqual(['about.md', 'contact.md']);
+    expect((await runCommand('grep', ['md'], { ctx: { piped: false } })).err[0]).toContain(
+      'no file given',
+    );
+  });
+
+  it('cat prints nothing for an empty pipe, and the text of a full one', async () => {
+    expect(await runCommand('cat', [], emptyPipe)).toEqual({ out: [], err: [] });
+    expect((await runCommand('cat', ['-n'], { stdin: 'a\nb', ctx: { piped: true } })).out).toEqual([
+      '     1\ta\n     2\tb',
+    ]);
+    expect((await runCommand('cat', [], { ctx: { piped: false } })).err[0]).toContain('usage: cat');
+  });
+});
+
+describe('ls / tree / history: one output entry per row', () => {
+  const entries = [
+    { name: '.hidden', type: 'file', size: 3 },
+    { name: 'about.md', type: 'file', size: 1500 },
+    { name: 'notes', type: 'dir', size: 0 },
+  ];
+  const listing = {
+    cfg: { user: 'guest' },
+    list: (path?: string) =>
+      path === 'notes' || path === './notes' ? { entries: [] } : { entries },
+  };
+
+  it('ls prints one name per entry, so it can be counted and filtered', async () => {
+    expect((await runCommand('ls', [], { ctx: listing })).out).toEqual(['about.md', 'notes/']);
+    expect((await runCommand('ls', ['-a'], { ctx: listing })).out).toHaveLength(3);
+  });
+
+  it('ls -l prints a total, then one row per entry, owned by the configured user', async () => {
+    const { out } = await runCommand('ls', ['-l'], { ctx: listing });
+    expect(out).toHaveLength(3);
+    expect(out[0]).toBe('total 2');
+    expect(out[1]).toMatch(/^-rw-r--r-- 1 guest guest {2}1500 \w{3} [ \d]\d about\.md$/);
+    expect(out[2]).toMatch(/^drwxr-xr-x 1 guest guest .* notes\/$/);
+  });
+
+  it('tree prints the root, one row per entry, then the count', async () => {
+    const { out } = await runCommand('tree', [], { ctx: listing });
+    expect(out).toEqual(['.', '├── about.md', '└── notes/', '1 directories, 1 files']);
+  });
+
+  it('history prints one row per command', async () => {
+    const { out } = await runCommand('history', [], { ctx: { history: ['ls', 'cat about.md'] } });
+    expect(out).toEqual(['  1 ls', '  2 cat about.md']);
+    expect((await runCommand('history', [], { ctx: { history: [] } })).out).toEqual(['# empty']);
+  });
+});
+
+describe('open', () => {
+  const run = (args: string[]) => {
+    const opened: string[] = [];
+    return runCommand('open', args, {
+      ctx: {
+        cfg: { links: { github: 'https://github.com/example', '<b>': 'https://example.com' } },
+        open: (url: string) => void opened.push(url),
+      },
+    }).then((result) => ({ ...result, opened }));
+  };
+
+  it('opens a configured link and lists the names', async () => {
+    expect((await run(['github'])).opened).toEqual(['https://github.com/example']);
+    expect((await run([])).out).toEqual(['# usage: open <name>', '<b>  github']);
+  });
+
+  it('ignores names inherited from Object.prototype', async () => {
+    const { err, opened } = await run(['constructor']);
+    expect(opened).toEqual([]);
+    expect(err[0]).toContain('constructor: unknown link');
+  });
+});
+
+describe('jwt', () => {
+  const segment = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const token = (payload: unknown) => `${segment({ alg: 'HS256' })}.${segment(payload)}.sig`;
+  const now = Math.floor(Date.now() / 1000);
+
+  it('never calls a token valid: it only reads the time window', async () => {
+    const text = (await runCommand('jwt', [token({ exp: now + 3600 })])).out.join('\n');
+    expect(text).toContain('✓ token not expired');
+    expect(text).toContain('signature NOT verified');
+    expect(text).not.toContain('valid');
+  });
+
+  it('honours exp and nbf', async () => {
+    const expired = (await runCommand('jwt', [token({ exp: now - 10 })])).out.join('\n');
+    expect(expired).toContain('✗ token expired');
+    const early = (await runCommand('jwt', [token({ nbf: now + 3600, exp: now + 7200 })])).out;
+    expect(early.join('\n')).toContain('✗ token not yet valid');
+  });
+});
+
+describe('ping', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('counts the requests really sent when interrupted', async () => {
+    const interrupt = new AbortController();
+    let calls = 0;
+    vi.stubGlobal('fetch', async () => {
+      calls++;
+      if (calls === 2) interrupt.abort(); // Ctrl+C during the second request
+      return {} as Response;
+    });
+    const { out } = await runCommand('ping', ['-c', '4', 'example.com'], {
+      ctx: { signal: interrupt.signal, sleep: async () => {} },
+    });
+    expect(calls).toBe(2);
+    expect(out.join('\n')).toContain('2 requests sent, 2 received, 0% loss');
+  });
+});
+
+describe('geoip target normalization', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('drops a port from a hostname or an IPv4 address', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ Status: 0, Answer: [{ type: 1, data: '192.168.0.9' }] }),
+      } as Response;
+    });
+    const viaHost = await runCommand('geoip', ['example.com:443']);
+    expect(viaHost.err).toEqual([]);
+    expect(urls[0]).toContain('name=example.com&type=A');
+    expect((await runCommand('geoip', ['10.0.0.1:53'])).out.join('\n')).toContain('IP: 10.0.0.1');
+    expect((await runCommand('geoip', ['[fe80::1]:443'])).out.join('\n')).toContain('IP: fe80::1');
+  });
 });
 
 describe('qr', () => {
   it('renders a square code with its quiet zone', async () => {
-    const { out, err } = await runCommand('qr', ['https://ludovic.toinel.com']);
+    const { out, err } = await runCommand('qr', ['https://example.com']);
     expect(err).toEqual([]);
     const rows = out[0].split('\n').filter(Boolean);
     // Version 2 (25 modules) + 2 × 4 quiet modules = 33 columns.
@@ -323,6 +520,35 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
     expect(out.at(-1)).toMatch(/1 command\(s\) · 6 LLM call\(s\) · model/);
   });
 
+  it('refuses output redirections and filesystem-mutating commands', async () => {
+    const attempts = ['whoami > notes.txt', 'whoami >> notes.txt', 'touch notes.txt', 'whoami'];
+    const { out, ran } = await runDenree(
+      (system, user) => {
+        if (system.includes('Split the goal')) return { analysis: '', steps: [] };
+        if (system.includes('Decide the NEXT step')) {
+          const next = attempts.shift();
+          return next
+            ? { thought: 'try', action: 'run', command: next }
+            : { thought: 'done', action: 'answer', command: '' };
+        }
+        if (system.includes('check a command output')) {
+          return user.includes('Ludovic Toinel')
+            ? { useful: true, facts: 'Ludovic Toinel', problem: '', goal_answered: true }
+            : { useful: false, facts: '', problem: 'not allowed', goal_answered: false };
+        }
+        if (system.includes('grade an answer')) return { score: 9, missing: '', command: '' };
+        return 'You are Ludovic Toinel.';
+      },
+      'who am I?',
+      { extraCommands: [{ name: 'touch', desc: 'create a file', alias: [], man: '' }] },
+    );
+    // Only the plain, read-only command reaches the shell.
+    expect(ran).toEqual(['whoami']);
+    const text = out.join('\n');
+    expect(text).toContain('output redirection (> or >>) is not allowed');
+    expect(text).toContain('command "touch" is not allowed.');
+  });
+
   it('does not loop on a repeated command: falls back on the plan, then stops', async () => {
     const { out, ran, calls } = await runDenree((system, user) => {
       if (system.includes('Split the goal')) {
@@ -458,6 +684,67 @@ describe('denree (dynamic reasoning graph, scripted LLM)', () => {
     expect(out.join('\n')).toContain('✦ answer › Nothing to report.');
     // 1 character per token measured ⇒ the retry fits in ~4k characters.
     expect(prompts[0].system.length + prompts[0].user.length).toBeLessThanOrEqual(4096);
+  });
+});
+
+describe('grep', () => {
+  const files: Record<string, string> = {
+    'notes.txt': 'alpha\nBeta (draft)\ngamma alpha',
+    'other.txt': 'nothing here',
+  };
+  const ctx = {
+    read: (path: string) =>
+      path in files ? { content: files[path], name: path } : { error: 'No such file or directory' },
+  };
+
+  it('prints the matching lines, numbered and prefixed when asked', async () => {
+    const plain = await runCommand('grep', ['alpha', 'notes.txt'], { ctx });
+    expect(plain.out).toEqual(['alpha', 'gamma alpha']);
+    const numbered = await runCommand('grep', ['-in', 'BETA', 'notes.txt', 'other.txt'], { ctx });
+    expect(numbered.out).toEqual(['notes.txt:2:Beta (draft)']);
+  });
+
+  it('searches an invalid regular expression as plain text', async () => {
+    const { out, err } = await runCommand('grep', ['(draft', 'notes.txt'], { ctx });
+    expect(err).toEqual([]);
+    expect(out).toEqual(['Beta (draft)']);
+  });
+
+  it('reports a missing file and keeps going', async () => {
+    const { out, err } = await runCommand('grep', ['alpha', 'nope.txt', 'notes.txt'], { ctx });
+    expect(err).toEqual(['grep: nope.txt: No such file or directory']);
+    expect(out).toEqual(['notes.txt:alpha', 'notes.txt:gamma alpha']);
+  });
+});
+
+describe('sl', () => {
+  it('prints a still frame of the express when there is no screen to animate', async () => {
+    const { out, err } = await runCommand('sl');
+    expect(err).toEqual([]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toContain('LudOS  EXPRESS');
+    expect(out[0].split('\n')).toHaveLength(9); // 3 rows of smoke + 6 of train
+    expect(out[0]).not.toContain('Help!');
+  });
+
+  it('combines its options: a little train, an accident, a flight', async () => {
+    const little = await runCommand('sl', ['-l']);
+    expect(little.out[0].split('\n')).toHaveLength(5);
+    expect(little.out[0]).not.toContain('EXPRESS');
+
+    const accident = await runCommand('sl', ['-a']);
+    expect(accident.out[0]).toContain('Help!');
+    expect(accident.out[0]).toContain('\\o/');
+
+    const combined = await runCommand('sl', ['-alF', '-e']);
+    expect(combined.out[0]).toContain('Help!');
+    expect(combined.out[0].split('\n')).toHaveLength(5); // no empty sky in a still frame
+  });
+
+  it('rejects unknown options and stray arguments', async () => {
+    expect((await runCommand('sl', ['-x'])).err[0]).toContain("invalid option '-x'");
+    expect((await runCommand('sl', ['-ax'])).err[0]).toContain("invalid option '-x'");
+    expect((await runCommand('sl', ['/tmp'])).err[0]).toContain("invalid option '/tmp'");
   });
 });
 

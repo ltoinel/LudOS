@@ -27,32 +27,48 @@ man: |
   ## SEE ALSO
   ll, tree, find, cd
 js: |
-  const flags = ctx.args.filter((a) => a.startsWith('-')).join('');
-  const all = /[aA]/.test(flags);   // -a / -A / -la …
+  // Every dash argument is a bundle of flags (-la, -a -l …): pool their letters.
+  const flags = ctx.args.filter((arg) => arg.startsWith('-')).join('');
+  const all = /[aA]/.test(flags); // -a / -A / -la …
   const long = /l/.test(flags);
-  const path = ctx.args.find((a) => !a.startsWith('-'));
+  const path = ctx.args.find((arg) => !arg.startsWith('-'));
   const res = ctx.list(path);
-  if (res.error) { ctx.error(`ls: ${res.error}`); return; }
+  if (res.error) {
+    ctx.error(`ls: ${res.error}`);
+    return;
+  }
   let entries = res.entries;
-  if (!all) entries = entries.filter((e) => !e.name.startsWith('.')); // hide dotfiles
+  if (!all) entries = entries.filter((entry) => !entry.name.startsWith('.')); // hide dotfiles
   // Directories are highlighted and suffixed with a slash.
-  const cell = (e) => e.type === 'dir'
-    ? `<span class="accent">${ctx.escape(e.name)}/</span>`
-    : `<span class="prompt-path">${ctx.escape(e.name)}</span>`;
+  const cell = (entry) =>
+    entry.type === 'dir'
+      ? `<span class="accent">${ctx.escape(entry.name)}/</span>`
+      : `<span class="prompt-path">${ctx.escape(entry.name)}</span>`;
+  // One append per entry: a pipe or a redirection records each append as one
+  // line, so `ls | wc -l` and `ls -l | grep md` see one entry per line.
   if (long) {
-    const d = new Date();
-    const stamp = `${d.toLocaleString('en-US', { month: 'short' })} ${String(d.getDate()).padStart(2, ' ')}`;
-    ctx.append(
-      `<div class="ln comment">total ${entries.length}</div>` +
-        entries
-          .map((e) => {
-            const perms = e.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--';
-            const size = String(e.size).padStart(5, ' ');
-            return `<div class="ln"><span class="comment">${perms} 1 ludovic ludovic ${size} ${stamp} </span>${cell(e)}</div>`;
-          })
-          .join(''),
-    );
+    // The virtual files carry no date: they are all stamped with today's ("Nov  8").
+    const today = new Date();
+    const month = today.toLocaleString('en-US', { month: 'short' });
+    const stamp = `${month} ${String(today.getDate()).padStart(2, ' ')}`;
+    const owner = ctx.escape((ctx.cfg && ctx.cfg.user) || 'guest'); // owner and group
+    ctx.append(`<div class="ln comment">total ${entries.length}</div>`);
+    for (const entry of entries) {
+      const perms = entry.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--';
+      const size = String(entry.size).padStart(5, ' ');
+      ctx.append(
+        `<div class="ln"><span class="comment">${perms} 1 ${owner} ${owner} ${size} ${stamp} </span>${cell(entry)}</div>`,
+      );
+    }
   } else {
-    ctx.append(`<div class="ln">${entries.map(cell).join('  ')}</div>`);
+    for (const entry of entries) {
+      const block = ctx.append(`<div class="ln">${cell(entry)}</div>`);
+      // On screen the names stay on one row, as before: each appended block
+      // flows inline, two characters apart. (Captured output has no layout.)
+      if (block && block.style) {
+        block.style.display = 'inline-block';
+        block.style.marginRight = '2ch';
+      }
+    }
   }
 ---

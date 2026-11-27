@@ -405,10 +405,24 @@ export async function unloadModel(): Promise<boolean> {
  * Returns a session handle, or null when the user declines. Reusing the resident
  * model needs no consent.
  */
-export async function ensureModel(opts: EnsureOptions): Promise<Session | null> {
+export function ensureModel(opts: EnsureOptions): Promise<Session | null> {
+  // One load at a time: two shell windows asking at once would otherwise both
+  // create an engine, and the first one would never be unloaded.
+  const run = loadQueue.then(() => ensureModelNow(opts));
+  loadQueue = run.then(
+    () => undefined,
+    () => undefined, // a failed load must not block the next one
+  );
+  return run;
+}
+
+/** Tail of the pending `ensureModel` calls (see above). */
+let loadQueue: Promise<void> = Promise.resolve();
+
+async function ensureModelNow(opts: EnsureOptions): Promise<Session | null> {
   if (!gpuAvailable()) {
     throw new Error(
-      'WebGPU indisponible — un navigateur compatible est requis (Chrome/Edge ≥ 113 ou Safari 18+).',
+      'WebGPU is unavailable — a compatible browser is required (Chrome/Edge ≥ 113 or Safari 18+).',
     );
   }
   const wl = await loadWebllm();

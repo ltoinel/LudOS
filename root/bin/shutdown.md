@@ -31,14 +31,21 @@ js: |
   // via ctx.close() (which unconditionally closes the window, unlike `exit`).
   const E = ctx.escape;
   const ok = (msg) =>
-    ctx.append('<div class="ln"><span class="comment">[</span><span class="accent text-glow"> OK </span><span class="comment">] ' + E(msg) + '</span></div>');
+    ctx.append(
+      '<div class="ln"><span class="comment">[</span><span class="accent text-glow"> OK </span><span class="comment">] ' +
+        E(msg) +
+        '</span></div>',
+    );
 
   ctx.line('');
-  ctx.append('<div class="ln"><span class="accent text-glow">Broadcast message</span><span class="comment"> — the system is going down NOW!</span></div>');
+  ctx.append(
+    '<div class="ln"><span class="accent text-glow">Broadcast message</span><span class="comment"> — the system is going down NOW!</span></div>',
+  );
 
+  const home = (ctx.cfg && ctx.cfg.home) || '/home';
   const steps = [
     'Stopping user sessions…',
-    'Unmounting /home/guest…',
+    `Unmounting ${home}…`,
     'Closing the encrypted LTS link…',
     'Powering off the CRT…',
   ];
@@ -48,7 +55,9 @@ js: |
   }
 
   ctx.line('');
-  ctx.append('<div class="ln ascii-art"><span class="accent text-glow">— system halted —</span></div>');
+  ctx.append(
+    '<div class="ln ascii-art"><span class="accent text-glow">— system halted —</span></div>',
+  );
   await ctx.sleep(500);
 
   // Close the window this command runs in.

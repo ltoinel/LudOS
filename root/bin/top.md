@@ -1,6 +1,7 @@
 ---
 name: top
 desc: live view of browser memory, workers and the LLM engine (q to quit)
+seo_title: Browser task manager — memory, workers, local LLM
 alias: htop
 demo: top -n 1
 man: |
@@ -48,99 +49,180 @@ man: |
   hashcat, llm, du, uname
 js: |
   const E = ctx.escape;
-  let delay = 1;
+  // ---- options: -d <seconds between frames>, -n <number of frames> ----
+  const DEFAULT_DELAY_S = 1;
+  const MIN_DELAY_S = 0.25; // faster refreshes would only burn CPU
+  let delay = DEFAULT_DELAY_S;
   let iterations = Infinity;
   for (let i = 0; i < ctx.args.length; i++) {
-    const a = ctx.args[i];
-    if (a === '-d') delay = Math.max(0.25, parseFloat(ctx.args[++i]) || 1);
-    else if (a === '-n') iterations = Math.max(1, parseInt(ctx.args[++i], 10) || 1);
-    else { ctx.error(`top: unknown option ${a} — see man top`); return; }
+    const option = ctx.args[i];
+    // Each option consumes the next argument as its value (hence the ++i).
+    if (option === '-d') {
+      delay = Math.max(MIN_DELAY_S, parseFloat(ctx.args[++i]) || DEFAULT_DELAY_S);
+    } else if (option === '-n') {
+      iterations = Math.max(1, parseInt(ctx.args[++i], 10) || 1);
+    } else {
+      ctx.error(`top: unknown option ${option} — see man top`);
+      return;
+    }
   }
 
-  const mib = (b) => (b / 1048576).toFixed(1).padStart(7) + ' MiB';
-  const dur = (ms) => {
-    const s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
-    return (h ? h + 'h' : '') + String(m).padStart(h ? 2 : 1, '0') + 'm' + String(r).padStart(2, '0') + 's';
+  // ---- formatting helpers ----
+  const BYTES_PER_MIB = 1048576;
+  const formatMib = (bytes) => (bytes / BYTES_PER_MIB).toFixed(1).padStart(7) + ' MiB';
+
+  // A duration as `5m07s` or `1h05m07s`.
+  const formatDuration = (ms) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const hoursPart = hours ? hours + 'h' : '';
+    // Minutes are zero-padded only when hours come before them.
+    const minutesPart = String(minutes).padStart(hours ? 2 : 1, '0') + 'm';
+    const secondsPart = String(seconds).padStart(2, '0') + 's';
+    return hoursPart + minutesPart + secondsPart;
   };
-  const bar = (ratio, width = 30) => {
-    const f = Math.max(0, Math.min(width, Math.round(ratio * width)));
-    const color = ratio > 0.85 ? '#ff6b6b' : ratio > 0.6 ? 'var(--amber)' : 'var(--green)';
-    return `[<span style="color:${color}">${'|'.repeat(f)}</span>${' '.repeat(width - f)}] ${(ratio * 100).toFixed(1).padStart(5)}%`;
+
+  // A usage gauge: `[||||      ]  42.0%`, turning amber then red as it fills.
+  const GAUGE_WARNING_RATIO = 0.6;
+  const GAUGE_CRITICAL_RATIO = 0.85;
+  const COLOR_CRITICAL = '#ff6b6b';
+  const gauge = (ratio, width = 30) => {
+    const filled = Math.max(0, Math.min(width, Math.round(ratio * width)));
+    let color = 'var(--green)';
+    if (ratio > GAUGE_CRITICAL_RATIO) color = COLOR_CRITICAL;
+    else if (ratio > GAUGE_WARNING_RATIO) color = 'var(--amber)';
+    const filledPart = `<span style="color:${color}">${'|'.repeat(filled)}</span>`;
+    const emptyPart = ' '.repeat(width - filled);
+    const percent = (ratio * 100).toFixed(1).padStart(5);
+    return `[${filledPart}${emptyPart}] ${percent}%`;
   };
-  const SPARK = '▁▂▃▄▅▆▇█';
-  const spark = (values) => {
+
+  // A sparkline: each value becomes one of eight block heights, scaled
+  // between the smallest and the largest value of the series.
+  const SPARK_LEVELS = '▁▂▃▄▅▆▇█';
+  const sparkline = (values) => {
     if (values.length < 2) return '';
-    const min = Math.min(...values), max = Math.max(...values);
-    return values.map((v) => SPARK[max === min ? 0 : Math.round(((v - min) / (max - min)) * 7)]).join('');
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const topLevel = SPARK_LEVELS.length - 1;
+    return values
+      .map((value) => {
+        // A flat series has no range to scale on: draw it at the lowest level.
+        const level = max === min ? 0 : Math.round(((value - min) / (max - min)) * topLevel);
+        return SPARK_LEVELS[level];
+      })
+      .join('');
   };
-  const label = (s) => `<span class="comment">${E(s.padEnd(13))}</span>`;
-  const title = (s) => `<span class="accent text-glow">${E(s)}</span>`;
 
-  const history = [];
-  // append() wraps the markup: keep a handle on the inner, pre-formatted line.
-  const view = ctx.append('<div class="ln ascii-art">…</div>').firstElementChild;
+  const LABEL_WIDTH = 13;
+  const label = (text) => `<span class="comment">${E(text.padEnd(LABEL_WIDTH))}</span>`;
+  const title = (text) => `<span class="accent text-glow">${E(text)}</span>`;
 
+  // Used-heap samples, one per frame, feeding the sparkline.
+  const HEAP_HISTORY_SIZE = 40;
+  const heapHistory = [];
+
+  // Builds one frame (the HTML of the whole screen).
   const frame = () => {
     const lines = [];
     const now = new Date();
-    lines.push(`${title('top')} <span class="comment">— ${E(now.toLocaleTimeString())} · up ${dur(performance.now())} · refresh ${delay}s · q or Ctrl+C to quit</span>`);
+    lines.push(
+      `${title('top')} <span class="comment">— ${E(now.toLocaleTimeString())} · up ${formatDuration(performance.now())} · refresh ${delay}s · q or Ctrl+C to quit</span>`,
+    );
     lines.push('');
 
     // ---- memory (Chromium's non-standard performance.memory) ----
     lines.push(title('Memory'));
     const mem = performance.memory;
     if (mem && mem.jsHeapSizeLimit) {
-      history.push(mem.usedJSHeapSize);
-      if (history.length > 40) history.shift();
-      lines.push(`${label('JS heap')}${bar(mem.usedJSHeapSize / mem.jsHeapSizeLimit)}`);
-      lines.push(`${label('  used')}${mib(mem.usedJSHeapSize)}   <span class="comment">${spark(history)}</span>`);
-      lines.push(`${label('  allocated')}${mib(mem.totalJSHeapSize)}`);
-      lines.push(`${label('  limit')}${mib(mem.jsHeapSizeLimit)}`);
+      heapHistory.push(mem.usedJSHeapSize);
+      if (heapHistory.length > HEAP_HISTORY_SIZE) heapHistory.shift();
+      lines.push(`${label('JS heap')}${gauge(mem.usedJSHeapSize / mem.jsHeapSizeLimit)}`);
+      lines.push(
+        `${label('  used')}${formatMib(mem.usedJSHeapSize)}   <span class="comment">${sparkline(heapHistory)}</span>`,
+      );
+      lines.push(`${label('  allocated')}${formatMib(mem.totalJSHeapSize)}`);
+      lines.push(`${label('  limit')}${formatMib(mem.jsHeapSizeLimit)}`);
     } else {
-      lines.push(`${label('JS heap')}<span class="comment">unavailable (performance.memory is Chromium-only)</span>`);
+      lines.push(
+        `${label('JS heap')}<span class="comment">unavailable (performance.memory is Chromium-only)</span>`,
+      );
     }
     const ram = navigator.deviceMemory;
     lines.push(`${label('Device RAM')}${ram ? '≈ ' + ram + ' GB (approx.)' : 'unknown'}`);
     lines.push(`${label('CPU threads')}${navigator.hardwareConcurrency || 'unknown'}`);
     lines.push(`${label('DOM nodes')}${document.getElementsByTagName('*').length}`);
-    lines.push(`${label('Windows')}${document.querySelectorAll('.ssh-win:not(.closed)').length} open`);
+    lines.push(
+      `${label('Windows')}${document.querySelectorAll('.ssh-win:not(.closed)').length} open`,
+    );
     lines.push('');
 
     // ---- local LLM engine + service worker ----
     lines.push(title('Engines'));
     const llm = ctx.llm.state();
-    const llmLine = llm.loading
-      ? `loading ${E(llm.label || '')} ${Math.round(llm.progress * 100)}%`
-      : llm.modelId
-        ? `${E(llm.label || llm.modelId)} · ${llm.tokensIn} in / ${llm.tokensOut} out tokens`
-        : '<span class="comment">idle (no model loaded)</span>';
+    let llmLine = '<span class="comment">idle (no model loaded)</span>';
+    if (llm.loading) {
+      llmLine = `loading ${E(llm.label || '')} ${Math.round(llm.progress * 100)}%`;
+    } else if (llm.modelId) {
+      llmLine = `${E(llm.label || llm.modelId)} · ${llm.tokensIn} in / ${llm.tokensOut} out tokens`;
+    }
     lines.push(`${label('WebLLM')}${llmLine}`);
-    const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
-    lines.push(`${label('Service wkr')}${sw ? E(sw.state) : '<span class="comment">none</span>'}`);
+    // The service worker controlling this page, if any (offline cache).
+    const serviceWorker = navigator.serviceWorker && navigator.serviceWorker.controller;
+    lines.push(
+      `${label('Service wkr')}${serviceWorker ? E(serviceWorker.state) : '<span class="comment">none</span>'}`,
+    );
     lines.push('');
 
     // ---- Web Workers spawned through ctx.worker() ----
     const workers = ctx.workers();
-    const running = workers.filter((w) => w.state === 'running').length;
-    lines.push(`${title('Workers')} <span class="comment">${running} running, ${workers.length - running} finished</span>`);
+    const running = workers.filter((worker) => worker.state === 'running').length;
+    lines.push(
+      `${title('Workers')} <span class="comment">${running} running, ${workers.length - running} finished</span>`,
+    );
     if (!workers.length) {
       lines.push('<span class="comment">  no worker (try: hashcat -b)</span>');
     } else {
-      lines.push(`<span class="comment">${'  ID'.padEnd(6)}${'NAME'.padEnd(16)}${'STATE'.padEnd(12)}${'AGE'.padEnd(10)}MSGS</span>`);
-      for (const w of workers) {
-        const age = (w.ended ?? performance.now()) - w.started;
-        const color = w.state === 'running' ? 'var(--green)' : w.state === 'error' ? '#ff6b6b' : 'var(--dim)';
+      lines.push(
+        `<span class="comment">${'  ID'.padEnd(6)}${'NAME'.padEnd(16)}${'STATE'.padEnd(12)}${'AGE'.padEnd(10)}MSGS</span>`,
+      );
+      for (const worker of workers) {
+        // A finished worker's age stops at its end time.
+        const age = (worker.ended ?? performance.now()) - worker.started;
+        let color = 'var(--dim)';
+        if (worker.state === 'running') color = 'var(--green)';
+        else if (worker.state === 'error') color = COLOR_CRITICAL;
+        // Column widths match the header above (6 / 16 / 12 / 10).
         lines.push(
-          String(w.id).padStart(4).padEnd(6) + E(w.name.slice(0, 15).padEnd(16)) +
-          `<span style="color:${color}">${w.state.padEnd(12)}</span>` + dur(age).padEnd(10) + w.messages,
+          String(worker.id).padStart(4).padEnd(6) +
+            E(worker.name.slice(0, 15).padEnd(16)) +
+            `<span style="color:${color}">${worker.state.padEnd(12)}</span>` +
+            formatDuration(age).padEnd(10) +
+            worker.messages,
         );
       }
     }
-    view.innerHTML = lines.join('\n');
+    return lines.join('\n');
   };
 
+  // The first frame is part of the appended markup itself, so a pipe or a
+  // redirection (which records the text at append time) captures real content
+  // — `top -n 1 | grep heap` works. append() wraps the markup: keep a handle
+  // on the inner, pre-formatted line to refresh it in place.
+  const view = ctx.append(`<div class="ln ascii-art">${frame()}</div>`).firstElementChild;
+  // Not on screen (piped, redirected, headless): nothing to refresh, and no
+  // keyboard to quit with — one frame is the whole output.
+  if (!view || !view.isConnected) return;
+  const terminalWindow = view.closest('.ssh-win');
+  // A closed window fades out (the main one stays in the DOM, hidden).
+  const windowGone = () =>
+    !view.isConnected || Boolean(terminalWindow && terminalWindow.classList.contains('closed'));
+
   // `q` quits, like the real top (Ctrl+C is handled by the shell: ctx.signal).
+  // The listener sits on this terminal window, not on `document`, so a `q`
+  // typed in another window or field is left alone.
   let quit = false;
   let wakeUp = () => {};
   const onKey = (e) => {
@@ -150,24 +232,29 @@ js: |
       wakeUp();
     }
   };
-  document.addEventListener('keydown', onKey);
+  const keyTarget = terminalWindow || document;
+  keyTarget.addEventListener('keydown', onKey);
+  // One abort listener for the whole run; it wakes whichever wait is pending.
+  const onAbort = () => wakeUp();
+  ctx.signal?.addEventListener('abort', onAbort);
 
-  // Refresh until q, Ctrl+C or the iteration budget is spent.
+  // Refresh until q, Ctrl+C, the window is closed or the iteration budget is
+  // spent (the first frame is already painted).
   try {
-    for (let n = 0; n < iterations; n++) {
-      frame();
-      if (n + 1 >= iterations) break;
+    for (let framesShown = 1; framesShown < iterations; framesShown++) {
+      // Wait for the next refresh; `q` and Ctrl+C cut the wait short.
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, delay * 1000);
         wakeUp = () => {
           clearTimeout(timer);
           resolve();
         };
-        ctx.signal?.addEventListener('abort', wakeUp, { once: true });
       });
-      if (quit || ctx.signal?.aborted) break;
+      if (quit || ctx.signal?.aborted || windowGone()) break;
+      view.innerHTML = frame();
     }
   } finally {
-    document.removeEventListener('keydown', onKey);
+    keyTarget.removeEventListener('keydown', onKey);
+    ctx.signal?.removeEventListener('abort', onAbort);
   }
 ---

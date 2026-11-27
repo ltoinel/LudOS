@@ -726,6 +726,64 @@ html:not(.js) .ssh-win {
 .ssh-out {
   margin: 0.15rem 0 0.6rem;
 }
+/* A manual / document pre-rendered at build time (Terminal.astro): semantic
+   HTML (headings, paragraphs, lists) dressed as terminal output, so it reads
+   like what `man` prints. One blank line (1lh) separates the blocks. */
+.man-page {
+  color: var(--fg);
+}
+.man-page h1,
+.man-page h2 {
+  margin: 0;
+  font: inherit;
+}
+.man-page h1 {
+  margin-bottom: 1lh;
+  color: var(--green);
+  text-shadow: var(--glow);
+}
+.man-page h2 {
+  color: var(--cyan);
+}
+.man-page p,
+.man-page ul,
+.man-page blockquote {
+  margin: 0 0 1lh;
+  padding: 0;
+  white-space: pre-wrap; /* manuals align their option tables with spaces */
+  word-break: break-word;
+}
+.man-page ul {
+  list-style: none;
+}
+.man-page li::before {
+  content: '› ';
+  color: var(--green);
+}
+.man-page blockquote,
+.man-page blockquote p {
+  margin-bottom: 0;
+  color: var(--dim);
+}
+.man-page code {
+  font: inherit;
+  color: var(--cyan);
+}
+.man-page strong {
+  font-weight: inherit;
+  color: var(--fg-bright);
+}
+.man-page a {
+  color: var(--green);
+  border-bottom: 1px dotted var(--green-dim);
+}
+.man-page a:hover,
+.man-page a:focus-visible {
+  background: var(--green);
+  color: var(--sel-fg);
+  border-color: transparent;
+  text-shadow: none;
+}
 .reveal-line {
   opacity: 0;
   transform: translateY(4px);

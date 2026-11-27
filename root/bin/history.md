@@ -22,9 +22,14 @@ man: |
   ## SEE ALSO
   clear
 js: |
-  ctx.append(
-    ctx.history
-      .map((h, i) => `<div class="ln"><span class="comment">${String(i + 1).padStart(3)} </span>${ctx.escape(h)}</div>`)
-      .join('') || '<div class="ln comment"># empty</div>',
-  );
+  if (!ctx.history.length) {
+    ctx.append('<div class="ln comment"># empty</div>');
+    return;
+  }
+  // One append per command: a pipe or a redirection records each append as
+  // one line (`history | grep ssh`).
+  ctx.history.forEach((command, index) => {
+    const number = String(index + 1).padStart(3);
+    ctx.append(`<div class="ln"><span class="comment">${number} </span>${ctx.escape(command)}</div>`);
+  });
 ---

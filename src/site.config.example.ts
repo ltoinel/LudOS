@@ -52,7 +52,7 @@ export const site = {
   url: 'https://example.com',
   /** Source repository of this portal — the dock's "fork me on GitHub" button
    *  (empty string to hide it). */
-  sourceUrl: 'https://github.com/ltoinel/Terminal.com',
+  sourceUrl: 'https://github.com/ltoinel/LudOS',
   /** Short name of the installable web app (PWA manifest `short_name`). */
   shortName: 'johndoe',
   locale: 'en_US',

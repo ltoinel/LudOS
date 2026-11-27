@@ -29,11 +29,16 @@ const LINGER_MS = 10_000;
 
 let nextId = 1;
 const registry = new Map<number, WorkerInfo>();
+/** The live Worker objects, by id — what `kill` terminates. */
+const handles = new Map<number, Worker>();
 
 /** Drops finished workers that have lingered long enough. */
 function prune(now: number): void {
   for (const [id, w] of registry) {
-    if (w.ended !== undefined && now - w.ended > LINGER_MS) registry.delete(id);
+    if (w.ended !== undefined && now - w.ended > LINGER_MS) {
+      registry.delete(id);
+      handles.delete(id);
+    }
   }
 }
 
@@ -51,6 +56,7 @@ export function spawnWorker(url: string | URL, name = 'worker', opts?: WorkerOpt
     messages: 0,
   };
   registry.set(info.id, info);
+  handles.set(info.id, worker);
 
   worker.addEventListener('message', () => {
     info.messages += 1;
@@ -73,4 +79,17 @@ export function spawnWorker(url: string | URL, name = 'worker', opts?: WorkerOpt
 export function listWorkers(): WorkerInfo[] {
   prune(performance.now());
   return [...registry.values()].map((w) => ({ ...w }));
+}
+
+/**
+ * Terminates a tracked worker by id (the `kill` command). Returns false when
+ * no such worker is running. The command that spawned it is not told: it keeps
+ * waiting for an answer until it times out or is interrupted with Ctrl+C.
+ */
+export function killWorker(id: number): boolean {
+  const info = registry.get(id);
+  const worker = handles.get(id);
+  if (!info || !worker || info.state !== 'running') return false;
+  worker.terminate(); // the wrapped terminate() records the end in the registry
+  return true;
 }

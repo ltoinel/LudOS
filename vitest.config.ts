@@ -6,7 +6,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      // text: console · json-summary: README badges · cobertura: Azure DevOps
+      // text: console · json-summary: README badges · cobertura: CI dashboards
       reporter: ['text', 'json-summary', 'cobertura'],
       // The pure, unit-testable logic. DOM / WebGPU / network glue (the shell
       // UI, windows, the LLM engine, the HTTP server) is exercised in the

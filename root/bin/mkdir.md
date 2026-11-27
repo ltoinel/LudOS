@@ -28,7 +28,10 @@ man: |
 js: |
   const parents = ctx.args.some((a) => /^-[a-z]*p/.test(a));
   const dirs = ctx.args.filter((a) => !a.startsWith('-'));
-  if (!dirs.length) { ctx.error('usage: mkdir [-p] <dir...>'); return; }
+  if (!dirs.length) {
+    ctx.error('usage: mkdir [-p] <dir...>');
+    return;
+  }
   for (const d of dirs) {
     const err = ctx.mkdir(d, parents);
     if (err) ctx.error(`mkdir: ${err}`);

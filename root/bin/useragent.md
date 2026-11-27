@@ -45,30 +45,34 @@ man: |
   checkip, uname, whoami
 js: |
   const E = ctx.escape;
-  const row = (k, v) =>
+  // One `Label: value` line, labels aligned in a 9-character column.
+  const row = (label, value) =>
     ctx.append(
-      `<div class="ln"><span class="accent" style="display:inline-block;min-width:9ch">${E(k)}</span><span class="comment">: </span><span class="out">${E(v)}</span></div>`,
+      `<div class="ln"><span class="accent" style="display:inline-block;min-width:9ch">${E(label)}</span><span class="comment">: </span><span class="out">${E(value)}</span></div>`,
     );
 
   // The raw User-Agent header, on its own wrapping line.
-  const ua = navigator.userAgent || '(unavailable)';
+  const userAgent = navigator.userAgent || '(unavailable)';
   ctx.append(
-    `<div class="ln out" style="white-space:pre-wrap;word-break:break-word">${E(ua)}</div>`,
+    `<div class="ln out" style="white-space:pre-wrap;word-break:break-word">${E(userAgent)}</div>`,
   );
 
   // Richer, structured details from the User-Agent Client Hints API
   // (Chromium-based browsers); falls back to legacy `navigator` fields.
-  const d = navigator.userAgentData;
+  const hints = navigator.userAgentData;
+  // Browsers slip a decoy brand into the list ("Not.A/Brand", "Not A;Brand" …)
+  // to keep sites from parsing it rigidly: leave it out.
+  const DECOY_BRAND = /not.?a.?brand/i;
   const brands =
-    d && Array.isArray(d.brands)
-      ? d.brands
-          .filter((b) => !/not.?a.?brand/i.test(b.brand))
-          .map((b) => `${b.brand} ${b.version}`)
+    hints && Array.isArray(hints.brands)
+      ? hints.brands
+          .filter((entry) => !DECOY_BRAND.test(entry.brand))
+          .map((entry) => `${entry.brand} ${entry.version}`)
           .join(', ')
       : '';
   if (brands) row('Browser', brands);
-  const platform = (d && d.platform) || navigator.platform || '';
+  const platform = (hints && hints.platform) || navigator.platform || '';
   if (platform) row('Platform', platform);
-  if (d && typeof d.mobile === 'boolean') row('Mobile', d.mobile ? 'yes' : 'no');
+  if (hints && typeof hints.mobile === 'boolean') row('Mobile', hints.mobile ? 'yes' : 'no');
   if (navigator.language) row('Language', navigator.language);
 ---

@@ -51,79 +51,131 @@ js: |
   // Works from an argument, a pipe (ctx.stdin), or interactively (REPL).
   const E = ctx.escape;
 
-  const FUN = {
-    sqrt: Math.sqrt, abs: Math.abs, round: Math.round, floor: Math.floor,
-    ceil: Math.ceil, ln: Math.log, log: (x) => Math.log(x) / Math.LN10,
-    exp: Math.exp, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  const FUNCTIONS = {
+    sqrt: Math.sqrt,
+    abs: Math.abs,
+    round: Math.round,
+    floor: Math.floor,
+    ceil: Math.ceil,
+    ln: Math.log,
+    log: (x) => Math.log(x) / Math.LN10,
+    exp: Math.exp,
+    sin: Math.sin,
+    cos: Math.cos,
+    tan: Math.tan,
   };
-  const CON = { pi: Math.PI, e: Math.E };
+  const CONSTANTS = { pi: Math.PI, e: Math.E };
 
   // Evaluate one expression. Throws on a syntax error.
   const evalExpr = (src) => {
-    const toks = (src.match(/[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?|\*\*|[A-Za-z_][A-Za-z0-9_]*|[-+*/%^()]/g) || []);
-    let i = 0;
-    const peek = () => toks[i];
-    const next = () => toks[i++];
+    const TOKEN = /[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?|\*\*|[A-Za-z_][A-Za-z0-9_]*|[-+*/%^()]/g;
+    const tokens = src.match(TOKEN) || [];
+    // Whatever is neither a token nor a blank is an error — silently dropping
+    // it would print a wrong result (`5!` must not answer 5).
+    const stray = src.replace(TOKEN, '').replace(/\s+/g, '');
+    if (stray) throw new Error('illegal character "' + Array.from(stray)[0] + '"');
+    let position = 0;
+    const peek = () => tokens[position];
+    const next = () => tokens[position++];
+
+    // Grammar, lowest precedence first: expr (+ -) > term (* / %) > factor
+    // (^ **) > unary (+ -) > atom (number, constant, function call, parens).
     const parseExpr = () => {
-      let v = parseTerm();
-      while (peek() === '+' || peek() === '-') { const op = next(); const r = parseTerm(); v = op === '+' ? v + r : v - r; }
-      return v;
+      let value = parseTerm();
+      while (peek() === '+' || peek() === '-') {
+        const operator = next();
+        const right = parseTerm();
+        value = operator === '+' ? value + right : value - right;
+      }
+      return value;
     };
     const parseTerm = () => {
-      let v = parseFactor();
-      while (peek() === '*' || peek() === '/' || peek() === '%') { const op = next(); const r = parseFactor(); v = op === '*' ? v * r : op === '/' ? v / r : v % r; }
-      return v;
+      let value = parseFactor();
+      while (peek() === '*' || peek() === '/' || peek() === '%') {
+        const operator = next();
+        const right = parseFactor();
+        if (operator === '*') value = value * right;
+        else if (operator === '/') value = value / right;
+        else value = value % right;
+      }
+      return value;
     };
     const parseFactor = () => {
-      const v = parseUnary();
-      if (peek() === '^' || peek() === '**') { next(); return Math.pow(v, parseFactor()); } // right-assoc
-      return v;
+      const base = parseUnary();
+      if (peek() === '^' || peek() === '**') {
+        next();
+        // Recursing on the exponent makes the power right-associative:
+        // 2^3^2 is 2^(3^2).
+        return Math.pow(base, parseFactor());
+      }
+      return base;
     };
     const parseUnary = () => {
-      if (peek() === '+') { next(); return parseUnary(); }
-      if (peek() === '-') { next(); return -parseUnary(); }
+      if (peek() === '+') {
+        next();
+        return parseUnary();
+      }
+      if (peek() === '-') {
+        next();
+        return -parseUnary();
+      }
       return parseAtom();
     };
     const parseAtom = () => {
-      const t = next();
-      if (t === undefined) throw new Error('unexpected end of expression');
-      if (t === '(') { const v = parseExpr(); if (next() !== ')') throw new Error('missing )'); return v; }
-      if (/^[0-9]|^\./.test(t)) return parseFloat(t);
-      if (/^[A-Za-z_]/.test(t)) {
-        const name = t.toLowerCase();
+      const token = next();
+      if (token === undefined) throw new Error('unexpected end of expression');
+      if (token === '(') {
+        const inner = parseExpr();
+        if (next() !== ')') throw new Error('missing )');
+        return inner;
+      }
+      if (/^[0-9]|^\./.test(token)) return parseFloat(token);
+      if (/^[A-Za-z_]/.test(token)) {
+        const name = token.toLowerCase();
         if (peek() === '(') {
           next();
-          const arg = parseExpr();
+          const argument = parseExpr();
           if (next() !== ')') throw new Error('missing )');
-          if (!FUN[name]) throw new Error('unknown function "' + t + '"');
-          return FUN[name](arg);
+          if (!FUNCTIONS[name]) throw new Error('unknown function "' + token + '"');
+          return FUNCTIONS[name](argument);
         }
-        if (name in CON) return CON[name];
-        throw new Error('unknown name "' + t + '"');
+        if (name in CONSTANTS) return CONSTANTS[name];
+        throw new Error('unknown name "' + token + '"');
       }
-      throw new Error('unexpected "' + t + '"');
+      throw new Error('unexpected "' + token + '"');
     };
-    const v = parseExpr();
-    if (i < toks.length) throw new Error('unexpected "' + toks[i] + '"');
-    if (typeof v !== 'number' || Number.isNaN(v)) throw new Error('not a number');
-    return v;
+
+    const result = parseExpr();
+    // Tokens left over after a complete expression (`2 3`, `1)`) are an error.
+    if (position < tokens.length) throw new Error('unexpected "' + tokens[position] + '"');
+    if (typeof result !== 'number' || Number.isNaN(result)) throw new Error('not a number');
+    return result;
   };
 
   // Pretty-print: round off binary-float fuzz, drop trailing zeros.
-  const fmt = (n) => {
+  const DECIMAL_SCALE = 1e10; // keep 10 decimal places
+  const formatNumber = (n) => {
     if (!isFinite(n)) return String(n);
-    return (Math.round(n * 1e10) / 1e10).toString();
+    return (Math.round(n * DECIMAL_SCALE) / DECIMAL_SCALE).toString();
   };
 
-  const run1 = (line) => {
-    try { ctx.line(fmt(evalExpr(line))); }
-    catch (e) { ctx.error('bc: ' + (e.message || 'syntax error')); }
+  // Evaluate one expression and print its result (or the error).
+  const evalAndPrint = (expression) => {
+    try {
+      ctx.line(formatNumber(evalExpr(expression)));
+    } catch (e) {
+      ctx.error('bc: ' + (e.message || 'syntax error'));
+    }
   };
 
   // Expression from the argument or a pipe → evaluate (supports `;`/newline lists).
   const input = ctx.args.join(' ').trim() || (ctx.stdin || '').trim();
   if (input) {
-    input.split(/[;\n]+/).map((s) => s.trim()).filter(Boolean).forEach(run1);
+    input
+      .split(/[;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach(evalAndPrint);
     return;
   }
 
@@ -132,10 +184,14 @@ js: |
   while (true) {
     if (ctx.signal && ctx.signal.aborted) break;
     const raw = await ctx.ask('bc›');
-    const q = (raw || '').trim();
-    if (!q) continue;
-    if (/^(quit|exit|q)$/i.test(q)) break;
-    ctx.append('<div class="ln"><span class="prompt">bc›</span> <span class="cmd">' + E(q) + '</span></div>');
-    run1(q);
+    const expression = (raw || '').trim();
+    if (!expression) continue;
+    if (/^(quit|exit|q)$/i.test(expression)) break;
+    ctx.append(
+      '<div class="ln"><span class="prompt">bc›</span> <span class="cmd">' +
+        E(expression) +
+        '</span></div>',
+    );
+    evalAndPrint(expression);
   }
 ---

@@ -57,12 +57,13 @@ js: |
     }
     const needle = keyword.toLowerCase();
     // help itself is left out: its own examples would match every search.
-    const matches = ctx.commands.filter((command) =>
-      command.name !== 'help' &&
-      [command.name, ...(command.alias || []), command.desc || '', command.man || '']
-        .join('\n')
-        .toLowerCase()
-        .includes(needle),
+    const matches = ctx.commands.filter(
+      (command) =>
+        command.name !== 'help' &&
+        [command.name, ...(command.alias || []), command.desc || '', command.man || '']
+          .join('\n')
+          .toLowerCase()
+          .includes(needle),
     );
     if (!matches.length) {
       ctx.line(`help: nothing appropriate for "${keyword}"`);
@@ -83,7 +84,9 @@ js: |
     );
     for (const command of matches) ctx.append(row(command, manualLine(command)));
     ctx.line('');
-    ctx.append('<div class="ln comment"># run <span class="cmd">man &lt;command&gt;</span> for more on a command</div>');
+    ctx.append(
+      '<div class="ln comment"># run <span class="cmd">man &lt;command&gt;</span> for more on a command</div>',
+    );
     return;
   }
 
@@ -99,5 +102,7 @@ js: |
       `<div class="ln">${ctx.fileList().map(fileLink).join('  ')}</div>`,
   );
   ctx.line('');
-  ctx.append('<div class="ln comment"># run <span class="cmd">man &lt;command&gt;</span> for more on a command</div>');
+  ctx.append(
+    '<div class="ln comment"># run <span class="cmd">man &lt;command&gt;</span> for more on a command</div>',
+  );
 ---
