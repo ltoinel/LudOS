@@ -51,69 +51,106 @@ js: |
   const args = ctx.args.slice();
 
   // ---- option parsing (hashcat-flavoured flags) ----
-  let mode = 0;
-  let attack = 3;
+  const HASH_MODE_MD5 = 0;
+  const ATTACK_BRUTE_FORCE = 3;
+  const DEFAULT_MAX_LENGTH = 6;
+  // Candidates must fit the worker's single MD5 block layout (see workerMain).
+  const LONGEST_SUPPORTED_LENGTH = 8;
+  const DEFAULT_TIMEOUT_S = 30;
+  const LONGEST_TIMEOUT_S = 120;
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  let mode = HASH_MODE_MD5;
+  let attack = ATTACK_BRUTE_FORCE;
   let bench = false;
-  let maxLen = 6;
-  let timeoutS = 30;
+  let maxLen = DEFAULT_MAX_LENGTH;
+  let timeoutS = DEFAULT_TIMEOUT_S;
   let charset = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const rest = [];
+  const positional = [];
   for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '-b' || a === '--benchmark') bench = true;
-    else if (a === '-m') mode = parseInt(args[++i], 10);
-    else if (a === '-a') attack = parseInt(args[++i], 10);
-    else if (a === '--max') maxLen = Math.max(1, Math.min(8, parseInt(args[++i], 10) || 6));
-    else if (a === '--timeout') timeoutS = Math.max(1, Math.min(120, parseInt(args[++i], 10) || 30));
-    else if (a === '--charset') charset = args[++i] || charset;
-    else if (!a.startsWith('-')) rest.push(a);
+    const option = args[i];
+    // A valued option consumes the next argument (hence the ++i).
+    if (option === '-b' || option === '--benchmark') bench = true;
+    else if (option === '-m') mode = parseInt(args[++i], 10);
+    else if (option === '-a') attack = parseInt(args[++i], 10);
+    else if (option === '--max') {
+      maxLen = clamp(parseInt(args[++i], 10) || DEFAULT_MAX_LENGTH, 1, LONGEST_SUPPORTED_LENGTH);
+    } else if (option === '--timeout') {
+      timeoutS = clamp(parseInt(args[++i], 10) || DEFAULT_TIMEOUT_S, 1, LONGEST_TIMEOUT_S);
+    } else if (option === '--charset') charset = args[++i] || charset;
+    else if (!option.startsWith('-')) positional.push(option);
   }
 
-  if (typeof Worker === 'undefined') { ctx.error('hashcat: Web Workers are unavailable in this browser'); return; }
-  if (mode !== 0) { ctx.error('hashcat: only -m 0 (MD5) is supported here'); return; }
-  if (attack !== 3) { ctx.error('hashcat: only -a 3 (brute-force / mask) is supported here'); return; }
-  if (!charset.length) { ctx.error('hashcat: empty charset'); return; }
+  if (typeof Worker === 'undefined') {
+    ctx.error('hashcat: Web Workers are unavailable in this browser');
+    return;
+  }
+  if (mode !== HASH_MODE_MD5) {
+    ctx.error('hashcat: only -m 0 (MD5) is supported here');
+    return;
+  }
+  if (attack !== ATTACK_BRUTE_FORCE) {
+    ctx.error('hashcat: only -a 3 (brute-force / mask) is supported here');
+    return;
+  }
+  if (!charset.length) {
+    ctx.error('hashcat: empty charset');
+    return;
+  }
 
   // Parse the target hash (crack mode) into 4 little-endian digest words.
   let target = null;
   let hashHex = '';
   if (!bench) {
-    hashHex = (rest[0] || '').toLowerCase();
+    hashHex = (positional[0] || '').toLowerCase();
     if (!/^[0-9a-f]{32}$/.test(hashHex)) {
       ctx.error('usage: hashcat -m 0 -a 3 <md5hash>   |   hashcat -b');
       return;
     }
-    const word = (o) => {
-      const b0 = parseInt(hashHex.substr(o, 2), 16);
-      const b1 = parseInt(hashHex.substr(o + 2, 2), 16);
-      const b2 = parseInt(hashHex.substr(o + 4, 2), 16);
-      const b3 = parseInt(hashHex.substr(o + 6, 2), 16);
-      return (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) | 0;
+    // The 8 hex digits at `hexOffset` are 4 bytes, least significant first:
+    // comparing the digest as four signed 32-bit words is what the worker's
+    // MD5 produces natively (no hex formatting per candidate).
+    const digestWord = (hexOffset) => {
+      const b0 = parseInt(hashHex.substr(hexOffset, 2), 16);
+      const b1 = parseInt(hashHex.substr(hexOffset + 2, 2), 16);
+      const b2 = parseInt(hashHex.substr(hexOffset + 4, 2), 16);
+      const b3 = parseInt(hashHex.substr(hexOffset + 6, 2), 16);
+      return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | 0;
     };
-    target = [word(0), word(8), word(16), word(24)];
+    target = [digestWord(0), digestWord(8), digestWord(16), digestWord(24)];
   }
 
-  const cores = Math.max(1, Math.min(32, navigator.hardwareConcurrency || 4));
-  const fmtSpeed = (h) =>
-    h >= 1e9 ? (h / 1e9).toFixed(2) + ' GH/s'
-    : h >= 1e6 ? (h / 1e6).toFixed(2) + ' MH/s'
-    : h >= 1e3 ? (h / 1e3).toFixed(2) + ' kH/s'
-    : Math.round(h) + ' H/s';
-  const num = (x) => x.toLocaleString('en-US');
+  // One worker per logical core; the cap keeps a many-core machine reasonable.
+  const MAX_WORKERS = 32;
+  const FALLBACK_CORES = 4; // when the browser hides hardwareConcurrency
+  const cores = clamp(navigator.hardwareConcurrency || FALLBACK_CORES, 1, MAX_WORKERS);
+
+  // A hash rate with the largest fitting unit (H/s, kH/s, MH/s, GH/s).
+  const formatSpeed = (hashesPerSecond) => {
+    if (hashesPerSecond >= 1e9) return (hashesPerSecond / 1e9).toFixed(2) + ' GH/s';
+    if (hashesPerSecond >= 1e6) return (hashesPerSecond / 1e6).toFixed(2) + ' MH/s';
+    if (hashesPerSecond >= 1e3) return (hashesPerSecond / 1e3).toFixed(2) + ' kH/s';
+    return Math.round(hashesPerSecond) + ' H/s';
+  };
+  const formatCount = (count) => count.toLocaleString('en-US');
 
   // ---- the compute unit, embedded so the whole command lives in one file ----
-  // It is stringified and spawned as a Blob worker (one per core). Protocol —
+  // It is stringified and spawned as a Blob worker (one per core), so it must
+  // stay self-contained: nothing from the enclosing scope exists in there.
+  // Protocol —
   // main->worker: {init,target,charset,w,W} once, then {run,length} / {stop};
   // worker->main: {progress,n} / {found,plain} / {done,length}.
+  // (`w` is the worker's index, `W` the number of workers.)
   const workerMain = () => {
     // MD5 per-round rotates and the sine-derived additive constants.
     const SHIFT = [
       7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
-      14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15,
-      21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+      14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21,
+      6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
     ];
+    const TWO_POW_32 = 4294967296;
     const K = new Int32Array(64);
-    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0;
+    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * TWO_POW_32) | 0;
     // One reusable 512-bit block: candidates are <= 8 bytes, so only M[0..2] and
     // M[14] are ever non-zero — every other word stays zero for the worker's life.
     const M = new Int32Array(16);
@@ -121,40 +158,46 @@ js: |
     let target = null; // [t0..t3] LE digest words, or null (benchmark)
     let codes = null; // charset bytes
     let charset = '';
-    let myW = 0; // this worker's index out of …
-    let totW = 1; // … this many workers
-    let L = 0; // candidate length
-    let idx = null; // odometer digits (charset indices)
-    let firstVals = []; // first-position values owned by this worker
-    let fi = 0;
-    let stopReq = false;
+    let workerIndex = 0; // this worker's index out of …
+    let workerCount = 1; // … this many workers
+    let candidateLength = 0;
+    // The candidate, as an odometer: one charset index per position.
+    let digits = null;
+    // The keyspace is shared out on the first character: this worker only
+    // tries the candidates starting with one of these charset indices.
+    let ownedFirstDigits = [];
+    let ownedFirstCursor = 0; // which owned first digit is being enumerated
+    let stopRequested = false;
 
-    self.onmessage = (ev) => {
-      const m = ev.data;
-      if (m.type === 'init') {
-        target = m.target;
-        charset = m.charset;
+    self.onmessage = (event) => {
+      const message = event.data;
+      if (message.type === 'init') {
+        target = message.target;
+        charset = message.charset;
         codes = new Int32Array(charset.length);
         for (let i = 0; i < charset.length; i++) codes[i] = charset.charCodeAt(i) & 0xff;
-        myW = m.w;
-        totW = m.W;
-      } else if (m.type === 'run') {
-        startRun(m.length);
-      } else if (m.type === 'stop') {
-        stopReq = true;
+        workerIndex = message.w;
+        workerCount = message.W;
+      } else if (message.type === 'run') {
+        startRun(message.length);
+      } else if (message.type === 'stop') {
+        stopRequested = true;
       }
     };
 
-    // Own first-position values myW, myW+W, … ; enumerate the rest for each.
+    // Own the first-position values workerIndex, workerIndex + workerCount, … ;
+    // enumerate the rest for each.
     function startRun(length) {
-      L = length;
-      const c = codes.length;
-      firstVals = [];
-      for (let v = myW; v < c; v += totW) firstVals.push(v);
-      fi = 0;
-      idx = new Int32Array(L);
-      if (firstVals.length) idx[0] = firstVals[0];
-      stopReq = false;
+      candidateLength = length;
+      const charsetSize = codes.length;
+      ownedFirstDigits = [];
+      for (let digit = workerIndex; digit < charsetSize; digit += workerCount) {
+        ownedFirstDigits.push(digit);
+      }
+      ownedFirstCursor = 0;
+      digits = new Int32Array(candidateLength);
+      if (ownedFirstDigits.length) digits[0] = ownedFirstDigits[0];
+      stopRequested = false;
       schedule();
     }
 
@@ -163,80 +206,90 @@ js: |
       setTimeout(step, 0);
     }
 
+    // Hashes one chunk of candidates, then reports and reschedules itself.
     function step() {
-      if (stopReq) return;
-      const c = codes.length;
+      if (stopRequested) return;
+      const charsetSize = codes.length;
+      // Candidates per chunk: large enough to amortize the timer round-trip,
+      // small enough for a 'stop' to land within a few milliseconds.
       const CHUNK = 120000;
-      let n = 0;
-      while (n < CHUNK) {
-        if (fi >= firstVals.length) {
-          if (n) self.postMessage({ type: 'progress', n });
-          self.postMessage({ type: 'done', length: L });
+      let tried = 0;
+      while (tried < CHUNK) {
+        if (ownedFirstCursor >= ownedFirstDigits.length) {
+          // This worker's share of the keyspace is spent for this length.
+          if (tried) self.postMessage({ type: 'progress', n: tried });
+          self.postMessage({ type: 'done', length: candidateLength });
           return;
         }
-        idx[0] = firstVals[fi];
+        digits[0] = ownedFirstDigits[ownedFirstCursor];
 
         // --- MD5 of the current candidate (single 512-bit block) ---
+        // Pack the candidate's bytes little-endian into the message words,
+        // append the 0x80 padding byte, and store the bit length in M[14].
         M[0] = 0;
         M[1] = 0;
         M[2] = 0;
-        for (let j = 0; j < L; j++) M[j >> 2] |= codes[idx[j]] << ((j & 3) << 3);
-        M[L >> 2] |= 0x80 << ((L & 3) << 3);
-        M[14] = L << 3;
+        for (let j = 0; j < candidateLength; j++) {
+          M[j >> 2] |= codes[digits[j]] << ((j & 3) << 3);
+        }
+        M[candidateLength >> 2] |= 0x80 << ((candidateLength & 3) << 3);
+        M[14] = candidateLength << 3;
+        // a, b, c, d: the MD5 state words; f and g: the round's mixing
+        // function and message-word index (the names of RFC 1321).
         let a = 0x67452301;
         let b = 0xefcdab89 | 0;
-        let cc = 0x98badcfe | 0;
+        let c = 0x98badcfe | 0;
         let d = 0x10325476;
         for (let i = 0; i < 64; i++) {
           let f, g;
           if (i < 16) {
-            f = (b & cc) | (~b & d);
+            f = (b & c) | (~b & d);
             g = i;
           } else if (i < 32) {
-            f = (d & b) | (~d & cc);
+            f = (d & b) | (~d & c);
             g = (5 * i + 1) & 15;
           } else if (i < 48) {
-            f = b ^ cc ^ d;
+            f = b ^ c ^ d;
             g = (3 * i + 5) & 15;
           } else {
-            f = cc ^ (b | ~d);
+            f = c ^ (b | ~d);
             g = (7 * i) & 15;
           }
           f = (f + a + K[i] + M[g]) | 0;
           a = d;
-          d = cc;
-          cc = b;
+          d = c;
+          c = b;
           const s = SHIFT[i];
           b = (b + ((f << s) | (f >>> (32 - s)))) | 0;
         }
         a = (a + 0x67452301) | 0;
         b = (b + (0xefcdab89 | 0)) | 0;
-        cc = (cc + (0x98badcfe | 0)) | 0;
+        c = (c + (0x98badcfe | 0)) | 0;
         d = (d + 0x10325476) | 0;
-        n++;
+        tried++;
 
-        if (target && a === target[0] && b === target[1] && cc === target[2] && d === target[3]) {
+        if (target && a === target[0] && b === target[1] && c === target[2] && d === target[3]) {
           let plain = '';
-          for (let j = 0; j < L; j++) plain += charset[idx[j]];
-          if (n) self.postMessage({ type: 'progress', n });
+          for (let j = 0; j < candidateLength; j++) plain += charset[digits[j]];
+          if (tried) self.postMessage({ type: 'progress', n: tried });
           self.postMessage({ type: 'found', plain });
           return;
         }
 
-        // Advance the odometer over positions 1..L-1; on overflow move to the
-        // next owned first value and reset the rest.
-        let p = L - 1;
-        while (p >= 1) {
-          if (++idx[p] < c) break;
-          idx[p] = 0;
-          p--;
+        // Advance the odometer over positions 1..length-1; on overflow move
+        // to the next owned first value and reset the rest.
+        let position = candidateLength - 1;
+        while (position >= 1) {
+          if (++digits[position] < charsetSize) break;
+          digits[position] = 0;
+          position--;
         }
-        if (p < 1) {
-          fi++;
-          for (let j = 1; j < L; j++) idx[j] = 0;
+        if (position < 1) {
+          ownedFirstCursor++;
+          for (let j = 1; j < candidateLength; j++) digits[j] = 0;
         }
       }
-      self.postMessage({ type: 'progress', n });
+      self.postMessage({ type: 'progress', n: tried });
       schedule();
     }
   };
@@ -256,12 +309,14 @@ js: |
     return;
   }
   const cleanup = () => {
-    workers.forEach((w) => w.terminate());
+    workers.forEach((worker) => worker.terminate());
     URL.revokeObjectURL(blobUrl);
   };
 
   // ---- banner ----
-  ctx.append(`<div class="ln"><span class="accent text-glow">hashcat</span><span class="comment"> (web edition) starting${bench ? ' in benchmark mode' : ''}…</span></div>`);
+  ctx.append(
+    `<div class="ln"><span class="accent text-glow">hashcat</span><span class="comment"> (web edition) starting${bench ? ' in benchmark mode' : ''}…</span></div>`,
+  );
   ctx.line('');
   ctx.line(`Compute.Units....: ${cores} (Web Workers, one per logical core)`);
   if (!bench) {
@@ -275,89 +330,111 @@ js: |
 
   // ---- shared run state ----
   let totalTried = 0;
-  let lastTried = 0;
-  const startT = performance.now();
-  let lastT = startT;
-  let curLen = 0;
-  let found = null;
-  let peakHps = 0;
+  const startTime = performance.now();
+  // Snapshot taken at the previous status refresh, to measure the current speed.
+  let lastRefreshTime = startTime;
+  let triedAtLastRefresh = 0;
+  let currentLength = 0;
+  let found = null; // the cracked plaintext, once a worker reports it
+  let peakSpeed = 0; // hashes per second
 
+  // Repaints the live status line; the speed is the rate since the last repaint.
   const refreshStatus = (state) => {
     const now = performance.now();
-    const dt = (now - lastT) / 1000;
-    const hps = dt > 0 ? (totalTried - lastTried) / dt : 0;
-    if (hps > peakHps) peakHps = hps;
-    lastT = now;
-    lastTried = totalTried;
-    const elapsed = ((now - startT) / 1000).toFixed(1);
+    const secondsSinceRefresh = (now - lastRefreshTime) / 1000;
+    const speed =
+      secondsSinceRefresh > 0 ? (totalTried - triedAtLastRefresh) / secondsSinceRefresh : 0;
+    if (speed > peakSpeed) peakSpeed = speed;
+    lastRefreshTime = now;
+    triedAtLastRefresh = totalTried;
+    const elapsed = ((now - startTime) / 1000).toFixed(1);
     statusEl.innerHTML =
       `<span class="comment">Status: </span><span class="out">${E(state)}</span>` +
-      ` <span class="comment">· Speed: </span><span class="accent">${E(fmtSpeed(hps))}</span>` +
-      ` <span class="comment">· Tried: </span><span class="out">${E(num(totalTried))}</span>` +
-      ` <span class="comment">· Len: </span><span class="out">${curLen || '-'}</span>` +
+      ` <span class="comment">· Speed: </span><span class="accent">${E(formatSpeed(speed))}</span>` +
+      ` <span class="comment">· Tried: </span><span class="out">${E(formatCount(totalTried))}</span>` +
+      ` <span class="comment">· Len: </span><span class="out">${currentLength || '-'}</span>` +
       ` <span class="comment">· ${elapsed}s</span>`;
   };
-  const ticker = setInterval(() => refreshStatus(found ? 'Cracked' : 'Running'), 600);
+  const STATUS_REFRESH_MS = 600;
+  const ticker = setInterval(() => refreshStatus(found ? 'Cracked' : 'Running'), STATUS_REFRESH_MS);
 
   // Run one candidate length across all workers; resolves 'found' or 'done'.
   const runLength = (length) =>
     new Promise((resolve) => {
-      let done = 0;
-      curLen = length;
-      workers.forEach((w) => {
-        w.onmessage = (ev) => {
-          const m = ev.data;
-          if (m.type === 'progress') totalTried += m.n;
-          else if (m.type === 'found') { found = m.plain; resolve('found'); }
-          else if (m.type === 'done') { if (++done === workers.length) resolve('done'); }
+      let finishedWorkers = 0;
+      currentLength = length;
+      workers.forEach((worker) => {
+        worker.onmessage = (event) => {
+          const message = event.data;
+          if (message.type === 'progress') totalTried += message.n;
+          else if (message.type === 'found') {
+            found = message.plain;
+            resolve('found');
+          } else if (message.type === 'done') {
+            // The length is exhausted once every worker has spent its share.
+            if (++finishedWorkers === workers.length) resolve('done');
+          }
         };
-        w.postMessage({ type: 'run', length });
+        worker.postMessage({ type: 'run', length });
       });
     });
 
   // Initialize every worker once (target + charset + its shard index).
-  workers.forEach((w, i) => w.postMessage({ type: 'init', target, charset, w: i, W: workers.length }));
+  workers.forEach((worker, index) =>
+    worker.postMessage({ type: 'init', target, charset, w: index, W: workers.length }),
+  );
 
-  const limitS = bench ? 6 : timeoutS;
-  const timeout = new Promise((res) => setTimeout(() => res('timeout'), limitS * 1000));
+  const BENCHMARK_DURATION_S = 6;
+  // With the default charset that is 36^7 ≈ 78 billion candidates: far more
+  // than any browser hashes in the benchmark window.
+  const BENCHMARK_LENGTH = 7;
+  const timeLimitS = bench ? BENCHMARK_DURATION_S : timeoutS;
+  const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), timeLimitS * 1000));
 
   // Benchmark hashes a huge fixed length so it never exhausts within the window;
   // cracking sweeps increasing lengths until a hit or the keyspace is spent.
-  const runner = bench
-    ? runLength(7)
-    : (async () => {
-        for (let L = 1; L <= maxLen; L++) {
-          if (found) return 'found';
-          if ((await runLength(L)) === 'found') return 'found';
-        }
-        return 'exhausted';
-      })();
+  const sweepLengths = async () => {
+    for (let length = 1; length <= maxLen; length++) {
+      if (found) return 'found';
+      if ((await runLength(length)) === 'found') return 'found';
+    }
+    return 'exhausted';
+  };
+  const runner = bench ? runLength(BENCHMARK_LENGTH) : sweepLengths();
 
   // Ctrl+C (ctx.signal) cancels the run too.
-  const aborted = new Promise((res) => {
+  const aborted = new Promise((resolve) => {
     if (!ctx.signal) return;
-    if (ctx.signal.aborted) res('aborted');
-    else ctx.signal.addEventListener('abort', () => res('aborted'), { once: true });
+    if (ctx.signal.aborted) resolve('aborted');
+    else ctx.signal.addEventListener('abort', () => resolve('aborted'), { once: true });
   });
   const outcome = await Promise.race([runner, timeout, aborted]);
 
   // Stop every worker and tear them down (covers the timeout / abort / found paths).
-  workers.forEach((w) => w.postMessage({ type: 'stop' }));
+  workers.forEach((worker) => worker.postMessage({ type: 'stop' }));
   clearInterval(ticker);
-  refreshStatus(
-    found ? 'Cracked' : bench ? 'Done' : outcome === 'aborted' ? 'Aborted' : outcome === 'timeout' ? 'Aborted' : 'Exhausted',
-  );
+  // A hit wins over everything; a benchmark always ends on its time limit.
+  let finalState = 'Exhausted';
+  if (found) finalState = 'Cracked';
+  else if (bench) finalState = 'Done';
+  else if (outcome === 'aborted' || outcome === 'timeout') finalState = 'Aborted';
+  refreshStatus(finalState);
   cleanup();
 
   // ---- final report ----
-  const secs = (performance.now() - startT) / 1000;
+  const secs = (performance.now() - startTime) / 1000;
+  const averageSpeed = formatSpeed(secs > 0 ? totalTried / secs : 0);
   ctx.line('');
   if (found !== null) {
-    ctx.append(`<div class="ln"><span class="accent text-glow">${E(hashHex)}:${E(found)}</span></div>`);
+    ctx.append(
+      `<div class="ln"><span class="accent text-glow">${E(hashHex)}:${E(found)}</span></div>`,
+    );
     ctx.line('');
     ctx.line('Status...........: Cracked');
   } else if (bench) {
-    ctx.line(`Speed.#*.........: ${fmtSpeed(secs > 0 ? totalTried / secs : 0)} (avg) · ${fmtSpeed(peakHps)} (peak), across ${cores} cores`);
+    ctx.line(
+      `Speed.#*.........: ${averageSpeed} (avg) · ${formatSpeed(peakSpeed)} (peak), across ${cores} cores`,
+    );
     ctx.line('Status...........: Benchmark done');
   } else if (outcome === 'aborted') {
     ctx.line('Status...........: Aborted (Ctrl+C)');
@@ -366,5 +443,7 @@ js: |
   } else {
     ctx.line(`Status...........: Exhausted — no match for length 1..${maxLen} over the charset`);
   }
-  ctx.line(`Time.............: ${secs.toFixed(1)}s · ${num(totalTried)} candidates · avg ${fmtSpeed(secs > 0 ? totalTried / secs : 0)}`);
+  ctx.line(
+    `Time.............: ${secs.toFixed(1)}s · ${formatCount(totalTried)} candidates · avg ${averageSpeed}`,
+  );
 ---

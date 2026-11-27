@@ -99,7 +99,9 @@ js: |
     }
     if (index === 0) return String(value);
     // One decimal below 10 (like du -h: 1.2K), none above.
-    return (value < 10 ? (Math.ceil(value * 10) / 10).toFixed(1) : String(Math.ceil(value))) + units[index];
+    return (
+      (value < 10 ? (Math.ceil(value * 10) / 10).toFixed(1) : String(Math.ceil(value))) + units[index]
+    );
   };
 
   const encoder = new TextEncoder();
@@ -145,7 +147,8 @@ js: |
       continue;
     }
     // A file given directly: its own size.
-    const isFile = target.entries.length === 1 && target.entries[0].type === 'file' && !ctx.read(path).error;
+    const isFile =
+      target.entries.length === 1 && target.entries[0].type === 'file' && !ctx.read(path).error;
     let size;
     if (isFile) {
       size = encoder.encode(ctx.read(path).content).length;

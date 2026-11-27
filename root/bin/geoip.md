@@ -56,11 +56,15 @@ js: |
   const text = (value) => E(String(value));
 
   // Normalize the argument: drop a scheme, a path and a port, keep the host.
+  // A port is only recognized where it is unambiguous: after a bracketed IPv6
+  // ([::1]:443) or after a host holding no other colon (example.com:443,
+  // 8.8.8.8:53) — a bare IPv6 address is full of colons and is left as is.
   const target = (ctx.args[0] || '')
     .trim()
     .replace(/^[a-z]+:\/\//i, '')
     .replace(/\/.*$/, '')
-    .replace(/^\[(.*)\]$/, '$1'); // [ipv6] as written in URLs
+    .replace(/^\[(.*)\](?::\d+)?$/, '$1') // [ipv6] or [ipv6]:port, as in URLs
+    .replace(/^([^:]+):\d+$/, '$1'); // host:port or ipv4:port
   const isIPv4 = (value) =>
     /^(\d{1,3})(\.\d{1,3}){3}$/.test(value) && value.split('.').every((part) => Number(part) <= 255);
   const isIPv6 = (value) => value.includes(':') && /^[0-9a-f:.]+$/i.test(value);
@@ -70,7 +74,8 @@ js: |
   const reservedRange = (ip) => {
     if (isIPv4(ip)) {
       const [a, b] = ip.split('.').map(Number);
-      if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return 'private network (RFC 1918)';
+      if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))
+        return 'private network (RFC 1918)';
       if (a === 127) return 'loopback';
       if (a === 169 && b === 254) return 'link-local';
       if (a === 100 && b >= 64 && b <= 127) return 'carrier-grade NAT (RFC 6598)';
@@ -84,14 +89,49 @@ js: |
     return '';
   };
 
+  // Runs `request(signal)` under a timeout. The signal also aborts on Ctrl+C
+  // (ctx.signal); a body read made inside `request` is covered as well.
+  const TIMEOUT_MS = 8000;
+  const withTimeout = async (request) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancel = () => controller.abort();
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel();
+    }, TIMEOUT_MS);
+    if (ctx.signal && ctx.signal.aborted) cancel();
+    ctx.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      return await request(controller.signal);
+    } catch (error) {
+      if (timedOut) {
+        const timeout = new Error(`timed out after ${TIMEOUT_MS / 1000} s`);
+        timeout.name = 'TimeoutError';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', cancel);
+    }
+  };
+  // GET a JSON document, within the timeout (`null` when the status is not 2xx
+  // and `requireOk` is off).
+  const getJson = (url, requireOk) =>
+    withTimeout(async (signal) => {
+      const response = await fetch(url, { cache: 'no-store', signal });
+      if (requireOk && !response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    });
+
   // Hostname → IP over DNS-over-HTTPS (A first, then AAAA).
   const resolve = async (host) => {
     for (const type of ['A', 'AAAA']) {
-      const response = await fetch(
+      const data = await getJson(
         `https://dns.google/resolve?name=${encodeURIComponent(host)}&type=${type}`,
-        { cache: 'no-store', signal: ctx.signal },
+        false,
       );
-      const data = await response.json();
       const answer = (data.Answer || []).find((record) => record.type === (type === 'A' ? 1 : 28));
       if (answer) return answer.data;
     }
@@ -100,9 +140,7 @@ js: |
 
   // Both services, mapped to the same shape. An empty IP means "the caller".
   const viaIpwhois = async (ip) => {
-    const response = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, { cache: 'no-store', signal: ctx.signal });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    const d = await response.json();
+    const d = await getJson(`https://ipwho.is/${encodeURIComponent(ip)}`, true);
     if (!d.success) throw new Error(d.message || 'lookup failed');
     const connection = d.connection || {};
     return {
@@ -127,9 +165,7 @@ js: |
   };
   const viaIpapi = async (ip) => {
     const url = ip ? `https://ipapi.co/${encodeURIComponent(ip)}/json/` : 'https://ipapi.co/json/';
-    const response = await fetch(url, { cache: 'no-store', signal: ctx.signal });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    const d = await response.json();
+    const d = await getJson(url, true);
     if (d.error) throw new Error(d.reason || 'lookup failed');
     return {
       source: 'ipapi.co',
@@ -146,7 +182,8 @@ js: |
       longitude: d.longitude,
       // utc_offset comes as "-0700".
       timezone: d.timezone
-        ? d.timezone + (d.utc_offset ? ` (UTC${d.utc_offset.slice(0, 3)}:${d.utc_offset.slice(3)})` : '')
+        ? d.timezone +
+          (d.utc_offset ? ` (UTC${d.utc_offset.slice(0, 3)}:${d.utc_offset.slice(3)})` : '')
         : '',
       isp: d.org,
       org: '',
@@ -158,13 +195,16 @@ js: |
   let ip = target;
   if (target && !isIPv4(target) && !isIPv6(target)) {
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(target)) {
-      ctx.error(`geoip: "${target}" is neither an IP address nor a hostname — usage: geoip [ip | hostname]`);
+      ctx.error(
+        `geoip: "${target}" is neither an IP address nor a hostname — usage: geoip [ip | hostname]`,
+      );
       return;
     }
     ctx.line(`Resolving ${target}…`);
     try {
       ip = await resolve(target);
     } catch (e) {
+      if (ctx.signal && ctx.signal.aborted) return; // Ctrl+C: stop quietly
       ctx.error(`geoip: DNS lookup failed (${e.message || 'network unavailable?'})`);
       return;
     }
@@ -195,7 +235,9 @@ js: |
     }
   }
   if (!info) {
-    ctx.error(`geoip: ${(firstError && firstError.message) || 'lookup failed'} (network unavailable?)`);
+    ctx.error(
+      `geoip: ${(firstError && firstError.message) || 'lookup failed'} (network unavailable?)`,
+    );
     return;
   }
 
@@ -205,7 +247,12 @@ js: |
   const place = [info.city, info.region].filter(Boolean).join(', ');
   if (place) row('Location', text(place + (info.postal ? ` ${info.postal}` : '')));
   if (info.country) {
-    row('Country', text(`${info.flag ? info.flag + ' ' : ''}${info.country}${info.countryCode ? ` (${info.countryCode})` : ''}`));
+    row(
+      'Country',
+      text(
+        `${info.flag ? info.flag + ' ' : ''}${info.country}${info.countryCode ? ` (${info.countryCode})` : ''}`,
+      ),
+    );
   }
   if (info.continent) row('Continent', text(info.continent));
   if (typeof info.latitude === 'number' && typeof info.longitude === 'number') {

@@ -73,6 +73,7 @@ js: |
   let path = (ctx.args[0] || '').trim();
   let text = '';
   let isNew = true;
+  let fromStdin = false;
   if (path) {
     const file = ctx.read(path);
     if (file.error === 'Is a directory' || file.error === 'Permission denied') {
@@ -84,10 +85,12 @@ js: |
       isNew = false;
       // ctx.read may have found the file with an implicit `.md`: save there.
       const base = path.split('/').pop();
-      if (file.name && file.name !== base) path = path.slice(0, path.length - base.length) + file.name;
+      if (file.name && file.name !== base)
+        path = path.slice(0, path.length - base.length) + file.name;
     }
   } else if (ctx.stdin) {
     text = ctx.stdin.endsWith('\n') ? ctx.stdin : `${ctx.stdin}\n`;
+    fromStdin = true;
   }
 
   // ---- styles (once per page) ----
@@ -150,7 +153,9 @@ js: |
   area.value = text;
   area.setSelectionRange(0, 0);
 
-  let saved = text; // content on disk, to tell whether the buffer is modified
+  // Content on disk, to tell whether the buffer is modified. Piped text was
+  // never written anywhere: the buffer starts modified, so ^X offers to save.
+  let saved = fromStdin ? '' : text;
   let cutBuffer = '';
   let lastWasCut = false; // successive ^K stack their lines, as in nano
   let statusTimer = 0;
@@ -171,6 +176,10 @@ js: |
   say(isNew ? (path ? 'New File' : '') : `Read ${lineCount(text)} lines`);
 
   // ---- status-bar prompts (file name, search, yes/no) ----
+  // Cancels the prompt being shown, if any (set by the prompt itself): used
+  // when the editor closes under it, so no listener or promise is left behind.
+  let cancelPrompt = null;
+
   // Resolves with the typed text, or null when cancelled (^C / Esc).
   const promptLine = (label, initial = '') =>
     new Promise((resolve) => {
@@ -183,11 +192,13 @@ js: |
       input.focus();
       input.select();
       const finish = (value) => {
+        cancelPrompt = null;
         status.classList.remove('is-prompt');
         status.textContent = '';
         area.focus();
         resolve(value);
       };
+      cancelPrompt = () => finish(null);
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -205,18 +216,23 @@ js: |
       clearTimeout(statusTimer);
       status.classList.add('is-prompt');
       status.textContent = label;
-      const onKey = (e) => {
+      const finish = (value) => {
+        cancelPrompt = null;
+        document.removeEventListener('keydown', onKey, true);
+        status.classList.remove('is-prompt');
+        status.textContent = '';
+        area.focus();
+        resolve(value);
+      };
+      function onKey(e) {
         const key = e.key.toLowerCase();
         const cancel = e.key === 'Escape' || (e.ctrlKey && key === 'c');
         if (!cancel && !choices.includes(key)) return;
         e.preventDefault();
         e.stopPropagation();
-        document.removeEventListener('keydown', onKey, true);
-        status.classList.remove('is-prompt');
-        status.textContent = '';
-        area.focus();
-        resolve(cancel ? null : key);
-      };
+        finish(cancel ? null : key);
+      }
+      cancelPrompt = () => finish(null);
       document.addEventListener('keydown', onKey, true);
     });
 
@@ -305,7 +321,10 @@ js: |
     area.setSelectionRange(at, at + needle.length);
     // Scroll the match into view: position by line.
     const line = value.slice(0, at).split('\n').length - 1;
-    area.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(area).lineHeight) - area.clientHeight / 2);
+    area.scrollTop = Math.max(
+      0,
+      line * parseFloat(getComputedStyle(area).lineHeight) - area.clientHeight / 2,
+    );
     if (wrapped) say('Search Wrapped');
   };
 
@@ -347,14 +366,27 @@ js: |
 
   // Resolves the command: removes the editor and hands the shell back.
   let close = () => {};
+  let closed = false;
+  // Closing the terminal window (its ✕ button, `exit` from elsewhere) only
+  // adds the `closed` class: watch for it, or the command would never resolve
+  // and its document-level listeners would outlive the editor.
+  const windowWatcher = new MutationObserver(() => {
+    if (win.classList.contains('closed')) close();
+  });
   const done = new Promise((resolve) => {
     close = () => {
+      if (closed) return;
+      closed = true;
+      windowWatcher.disconnect();
+      if (cancelPrompt) cancelPrompt(); // a pending prompt must not linger
+      clearTimeout(statusTimer);
       document.removeEventListener('keydown', onKeyDown, true);
       editor.remove();
       anchor.textContent = `nano: ${path || 'New Buffer'} closed`;
       resolve();
     };
   });
+  windowWatcher.observe(win, { attributes: true, attributeFilter: ['class'] });
 
   const exit = async () => {
     if (modified()) {
@@ -386,6 +418,8 @@ js: |
     button.textContent = `^${key.toUpperCase()}`;
     item.append(button, label);
     item.addEventListener('click', () => {
+      // A prompt owns the status bar: answer or cancel it first (as for keys).
+      if (status.classList.contains('is-prompt')) return;
       lastWasCut = false;
       action();
     });

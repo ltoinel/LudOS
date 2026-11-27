@@ -46,7 +46,10 @@ js: |
   const decode = ctx.args[0] === '-d' || ctx.args[0] === '--decode';
   // The payload comes from the arguments, or from piped stdin (`… | base64`).
   const input = (decode ? ctx.args.slice(1) : ctx.args).join(' ') || ctx.stdin || '';
-  if (!input) { ctx.error('usage: base64 [-d] <text>'); return; }
+  if (!input) {
+    ctx.error('usage: base64 [-d] <text>');
+    return;
+  }
   try {
     if (decode) {
       // atob -> latin1 bytes -> UTF-8 string (so accents survive a round-trip).

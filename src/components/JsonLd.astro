@@ -97,6 +97,8 @@ if (breadcrumb && !notFound) {
 }
 
 const jsonLd = { '@context': 'https://schema.org', '@graph': graph };
+// `<` is escaped so no config text can close the script element early.
+const safeJson = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 ---
 
-<script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+<script type="application/ld+json" is:inline set:html={safeJson} />

@@ -42,29 +42,66 @@ man: |
   geoip, nslookup, whois, ping, useragent, httpstest
 js: |
   const E = ctx.escape;
-  const row = (k, v) =>
+  // One `Label: value` line, labels aligned in an 8-character column.
+  const row = (label, value) =>
     ctx.append(
-      `<div class="ln"><span class="accent" style="display:inline-block;min-width:8ch">${E(k)}</span><span class="comment">: </span><span class="out">${E(v)}</span></div>`,
+      `<div class="ln"><span class="accent" style="display:inline-block;min-width:8ch">${E(label)}</span><span class="comment">: </span><span class="out">${E(value)}</span></div>`,
     );
+  // Runs `request(signal)` under a timeout. The signal also aborts on Ctrl+C
+  // (ctx.signal); a body read made inside `request` is covered as well.
+  const TIMEOUT_MS = 8000;
+  const withTimeout = async (request) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancel = () => controller.abort();
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel();
+    }, TIMEOUT_MS);
+    if (ctx.signal && ctx.signal.aborted) cancel();
+    ctx.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      return await request(controller.signal);
+    } catch (error) {
+      if (timedOut) {
+        const timeout = new Error(`timed out after ${TIMEOUT_MS / 1000} s`);
+        timeout.name = 'TimeoutError';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', cancel);
+    }
+  };
+  // GET a JSON document within the timeout; a non-2xx status is an error.
+  const getJson = (url) =>
+    withTimeout(async (signal) => {
+      const response = await fetch(url, { cache: 'no-store', signal });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    });
+
   ctx.line('Resolving your public IP…');
   try {
     // ipapi.co: IP + geolocation, CORS-enabled.
-    const r = await fetch('https://ipapi.co/json/', { cache: 'no-store', signal: ctx.signal });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    if (d.error) throw new Error(d.reason || 'API error');
-    row('IP', d.ip);
-    const place = [d.city, d.region].filter(Boolean).join(', ');
+    const info = await getJson('https://ipapi.co/json/');
+    // ipapi.co reports its own failures (rate limit…) in a 200 answer.
+    if (info.error) throw new Error(info.reason || 'API error');
+    row('IP', info.ip);
+    const place = [info.city, info.region].filter(Boolean).join(', ');
     if (place) row('Location', place);
-    if (d.country_name) row('Country', `${d.country_name} (${d.country_code})`);
-    if (d.org) row('Network', d.org);
+    if (info.country_name) row('Country', `${info.country_name} (${info.country_code})`);
+    if (info.org) row('Network', info.org);
   } catch {
+    // Ctrl+C is not a network failure: stop without trying the fallback.
+    if (ctx.signal && ctx.signal.aborted) return;
     // Fallback: ipify, very reliable, returns only the IP.
     try {
-      const r = await fetch('https://api64.ipify.org?format=json', { cache: 'no-store', signal: ctx.signal });
-      const d = await r.json();
-      row('IP', d.ip);
+      const fallback = await getJson('https://api64.ipify.org?format=json');
+      row('IP', fallback.ip);
     } catch {
+      if (ctx.signal && ctx.signal.aborted) return;
       ctx.error('checkip: could not fetch the IP (network unavailable?)');
     }
   }

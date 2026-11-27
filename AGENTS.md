@@ -7,7 +7,7 @@ before making changes. For an in-depth, feature-by-feature tour, see
 ## What this project is
 
 **LudOS**, the personal portal **`ludovic.toinel.com`** — a static site with a **terminal /
-phosphor aesthetic**, built with **[Astro](https://astro.build) 5 +
+phosphor aesthetic**, built with **[Astro](https://astro.build) 7 +
 [Tailwind CSS](https://tailwindcss.com) v4**. Zero framework JS (no React/Vue):
 the interactivity is a hand-written shell engine. Two themes (CRT green with a
 Matrix rain background, and amber monochrome), self-hosted fonts (VT323 +
@@ -15,7 +15,9 @@ IBM Plex Mono), CRT effects (scanlines, grain, vignette, glow).
 
 The home page is a single, draggable/resizable terminal window that simulates an
 SSH session; visitors type commands to explore content. Deep links
-(`/[command]`) render one static, crawlable page per command for SEO.
+(`/[command]`) render one static page per command for SEO: its manual is
+pre-rendered at build time inside the terminal window (visible on first paint,
+kept by the shell on boot), and the command's `demo` then runs below it.
 
 ## Golden rules
 
@@ -54,7 +56,7 @@ SSH session; visitors type commands to explore content. Deep links
 
 ## Setup & commands
 
-Requires **Node ≥ 22.18** (native TS execution). The site itself is fully
+Requires **Node ≥ 22.23.4** (Astro 7; native TS execution). The site itself is fully
 static; the only server-side piece is the `msg` email relay (`server/`, plain
 Node, zero dependencies, mails through the local `sendmail`).
 
@@ -64,9 +66,9 @@ npm run dev        # HMR dev server -> http://localhost:4321
 ```
 
 Run these before considering a change done — the same set runs in CI on every
-push/PR (`.github/workflows/ci.yml` on GitHub, `azure-pipelines.yml` on Azure
-DevOps, which also publishes JUnit test results and Cobertura coverage via
-`npm run test:ci`):
+push/PR (`.github/workflows/ci.yml`, which calls the shared
+`.github/workflows/checks.yml`; `npm run test:ci` additionally writes JUnit
+test results and Cobertura coverage):
 
 ```bash
 npm run format:check   # Prettier
@@ -88,27 +90,27 @@ iterating (e.g. `npm test`) and the full sweep before finishing.
 
 ## Where things live
 
-| Area                               | Path                                                            |
-| ---------------------------------- | --------------------------------------------------------------- |
-| Identity / SEO / shell config      | `src/site.config.ts` (+ `.example.ts` template)                 |
-| Home page (terminal)               | `src/pages/index.astro`                                         |
-| Per-command static pages           | `src/pages/[command].astro`                                     |
-| Generated endpoints                | `src/pages/{sitemap.xml,sw.js,shell-*.json}.ts`                 |
-| `<head>` / SEO / fonts / SW        | `src/layouts/Layout.astro`                                      |
-| UI components                      | `src/components/*.astro`                                        |
-| Shell session (I/O, prompt, `ctx`) | `src/lib/terminal.ts`                                           |
-| `ctx` API contract (typed)         | `src/lib/shell-ctx.ts`                                          |
-| Pipelines / redirections / capture | `src/lib/executor.ts`                                           |
-| Virtual filesystem                 | `src/lib/vfs.ts`                                                |
-| Local LLM (only WebLLM loader)     | `src/lib/llm.ts`                                                |
-| Build-time content walker          | `src/lib/content.ts`                                            |
-| Command parsing / validation       | `src/lib/commands.ts`, `src/lib/shell-parse.ts`                 |
-| `msg` email relay (Node)           | `server/msg.ts` (pure logic), `server/msg-server.ts`            |
-| Deployment (nginx, systemd)        | `deploy/*.template` → `npm run deploy:config`                   |
-| Themes                             | `src/lib/themes.ts`, `src/styles/global.css`                    |
-| Fake filesystem (content)          | `root/` (`bin/`, `home/guest/`, `etc/`, `var/`, …)              |
-| Static assets                      | `public/` (icons, fonts, manifest, OG image, `vendor/` bundles) |
-| Tests                              | `tests/*.test.ts` (Vitest)                                      |
+| Area                               | Path                                                 |
+| ---------------------------------- | ---------------------------------------------------- |
+| Identity / SEO / shell config      | `src/site.config.ts` (+ `.example.ts` template)      |
+| Home page (terminal)               | `src/pages/index.astro`                              |
+| Per-command static pages           | `src/pages/[command].astro`                          |
+| Generated endpoints                | `src/pages/{sitemap.xml,sw.js,shell-*.json}.ts`      |
+| `<head>` / SEO / fonts / SW        | `src/layouts/Layout.astro`                           |
+| UI components                      | `src/components/*.astro`                             |
+| Shell session (I/O, prompt, `ctx`) | `src/lib/terminal.ts`                                |
+| `ctx` API contract (typed)         | `src/lib/shell-ctx.ts`                               |
+| Pipelines / redirections / capture | `src/lib/executor.ts`                                |
+| Virtual filesystem                 | `src/lib/vfs.ts`                                     |
+| Local LLM (only WebLLM loader)     | `src/lib/llm.ts`                                     |
+| Build-time content walker          | `src/lib/content.ts`                                 |
+| Command parsing / validation       | `src/lib/commands.ts`, `src/lib/shell-parse.ts`      |
+| `msg` email relay (Node)           | `server/msg.ts` (pure logic), `server/msg-server.ts` |
+| Deployment (nginx, systemd)        | `deploy/*.template` → `npm run deploy:config`        |
+| Themes                             | `src/lib/themes.ts`, `src/styles/global.css`         |
+| Fake filesystem (content)          | `root/` (`bin/`, `home/guest/`, `etc/`, `var/`, …)   |
+| Static assets                      | `public/` (icons, fonts, OG image)                   |
+| Tests                              | `tests/*.test.ts` (Vitest)                           |
 
 ## Conventions
 
@@ -168,6 +170,10 @@ layer — verify interactive behaviour with `npm run dev`.
 
 ## Safety & gotchas
 
+- **Pinned Astro compiler**: `package.json` has an `overrides` entry holding
+  `@astrojs/compiler-rs` at 0.5.2, because the 0.5.3 native binary crashes with
+  "Illegal instruction" on x86-64 CPUs without AVX2/BMI2 (withastro/compiler-rs
+  issue 220). Remove the override once a fixed release is out.
 - Never commit secrets. `msg.env` (relay config), `src/site.config.ts`, `data/`
   and `dist/` are gitignored on purpose — keep them out of commits.
 - The deployed **CSP** (`deploy/nginx.conf.template`) allows `unsafe-eval` (command

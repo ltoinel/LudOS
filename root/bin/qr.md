@@ -1,6 +1,6 @@
 ---
 name: qr
-desc: render text or a URL as a QR code — e.g. qr https://ludovic.toinel.com
+desc: render text or a URL as a QR code — e.g. qr https://example.com
 demo: qr %URL%
 seo_title: QR code generator — free, private, in your browser
 man: |
@@ -44,7 +44,7 @@ man: |
   computed entirely in your browser.
 
   ## EXAMPLES
-  qr https://ludovic.toinel.com
+  qr https://example.com
   qr WIFI:T:WPA;S:MyNetwork;P:secret;;
 
   ## SEE ALSO
@@ -53,11 +53,15 @@ js: |
   // Self-contained: the QR encoder below is implemented here (no library).
   const args = ctx.args.slice();
   let level = 1; // L=0, M=1, Q=2, H=3 — M (15 % recovery) by default
-  const li = args.indexOf('-l');
-  if (li !== -1) {
-    level = 'LMQH'.indexOf((args[li + 1] || '').toUpperCase());
-    if (level < 0) { ctx.error('qr: -l takes L, M, Q or H'); return; }
-    args.splice(li, 2);
+  const levelFlagIndex = args.indexOf('-l');
+  if (levelFlagIndex !== -1) {
+    level = 'LMQH'.indexOf((args[levelFlagIndex + 1] || '').toUpperCase());
+    if (level < 0) {
+      ctx.error('qr: -l takes L, M, Q or H');
+      return;
+    }
+    // Drop the flag and its value: what remains is the text to encode.
+    args.splice(levelFlagIndex, 2);
   }
   const text = (args.join(' ') || ctx.stdin).trim();
   if (!text) {
@@ -73,40 +77,40 @@ js: |
   // (index 0 is unused so that the version number is the index).
   const ECC_CODEWORDS_PER_BLOCK = [
     [
-      0, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28,
-      28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      0, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30,
+      30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
     ],
     [
-      0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26,
-      26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
+      0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28,
+      28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
     ],
     [
-      0, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30,
-      28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      0, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30,
+      30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
     ],
     [
-      0, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28,
-      30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      0, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30,
+      30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
     ],
   ];
 
   // Number of error-correction blocks, same layout as above.
   const ECC_BLOCK_COUNT = [
     [
-      0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8,
-      8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25,
+      0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14,
+      15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25,
     ],
     [
-      0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16,
-      17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49,
+      0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25,
+      26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49,
     ],
     [
-      0, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20,
-      23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68,
+      0, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34,
+      34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68,
     ],
     [
-      0, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25,
-      25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
+      0, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37,
+      40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
     ],
   ];
 
@@ -482,15 +486,22 @@ js: |
 
   // Render two module-rows per text line with half-block glyphs, on a white card
   // with black ink so any scanner reads it. A 4-module quiet zone frames it.
-  const n = qr.size;
-  const QUIET = 4;
-  const dark = (r, c) => r >= 0 && c >= 0 && r < n && c < n && qr.isDark(r, c);
+  const size = qr.size;
+  const QUIET_ZONE = 4;
+  // Outside the symbol (the quiet zone) every module is light.
+  const isDark = (row, col) =>
+    row >= 0 && col >= 0 && row < size && col < size && qr.isDark(row, col);
+  // One character draws two stacked modules.
+  const halfBlock = (top, bottom) => {
+    if (top && bottom) return '█';
+    if (top) return '▀';
+    if (bottom) return '▄';
+    return ' ';
+  };
   let out = '';
-  for (let r = -QUIET; r < n + QUIET; r += 2) {
-    for (let c = -QUIET; c < n + QUIET; c++) {
-      const top = dark(r, c);
-      const bot = dark(r + 1, c);
-      out += top && bot ? '█' : top ? '▀' : bot ? '▄' : ' ';
+  for (let row = -QUIET_ZONE; row < size + QUIET_ZONE; row += 2) {
+    for (let col = -QUIET_ZONE; col < size + QUIET_ZONE; col++) {
+      out += halfBlock(isDark(row, col), isDark(row + 1, col));
     }
     out += '\n';
   }

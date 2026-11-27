@@ -34,15 +34,22 @@ man: |
   open, cat, uname, useragent
 js: |
   // Identity comes from site.config.ts, injected into the shell cfg as `profile`.
-  const p = ctx.cfg.profile;
-  if (!p) { ctx.error('whoami: identity unavailable'); return; }
+  const profile = ctx.cfg.profile;
+  if (!profile) {
+    ctx.error('whoami: identity unavailable');
+    return;
+  }
   const lines = [
-    `# ${p.name}`,
-    `## ${p.role}${p.company ? ` @ ${p.company}` : ''}`,
+    `# ${profile.name}`,
+    `## ${profile.role}${profile.company ? ` @ ${profile.company}` : ''}`,
     '',
   ];
-  if (p.knowsAbout && p.knowsAbout.length) lines.push(`> ${p.knowsAbout.join(' · ')}`);
-  const home = [p.nationality ? `Based in ${p.nationality}` : '', p.url ? `[${ctx.cfg.host}](${p.url})` : '']
+  if (profile.knowsAbout && profile.knowsAbout.length)
+    lines.push(`> ${profile.knowsAbout.join(' · ')}`);
+  const home = [
+    profile.nationality ? `Based in ${profile.nationality}` : '',
+    profile.url ? `[${ctx.cfg.host}](${profile.url})` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
   if (home) lines.push(`> ${home}`);

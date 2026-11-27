@@ -64,38 +64,60 @@ js: |
   const E = ctx.escape;
   const args = ctx.args.slice();
   const first = args[0];
-  const L = ctx.llm;
+  const llm = ctx.llm;
 
   // ---- status: loaded model + tokens ----
   if (!first) {
-    const s = L.state();
-    if (s && s.modelId) {
-      ctx.append('<div class="ln out"><span class="accent text-glow">●</span> model: <span class="cmd">' + E(s.label || s.modelId) + '</span></div>');
-      ctx.append('<div class="ln comment">id: ' + E(s.modelId) + '</div>');
-      ctx.append('<div class="ln out">tokens — <span class="cmd">↑ in ' + s.tokensIn + '</span>  ·  <span class="cmd">↓ out ' + s.tokensOut + '</span></div>');
-      if (s.loading) ctx.line('loading… ' + Math.round((s.progress || 0) * 100) + '%');
+    const state = llm.state();
+    if (state && state.modelId) {
+      ctx.append(
+        '<div class="ln out"><span class="accent text-glow">●</span> model: <span class="cmd">' +
+          E(state.label || state.modelId) +
+          '</span></div>',
+      );
+      ctx.append('<div class="ln comment">id: ' + E(state.modelId) + '</div>');
+      ctx.append(
+        '<div class="ln out">tokens — <span class="cmd">↑ in ' +
+          state.tokensIn +
+          '</span>  ·  <span class="cmd">↓ out ' +
+          state.tokensOut +
+          '</span></div>',
+      );
+      if (state.loading) ctx.line('loading… ' + Math.round((state.progress || 0) * 100) + '%');
     } else {
       ctx.line('no model loaded. Load one:  llm --load <id>   ·   or run  miaougpt');
     }
-    ctx.line('WebLLM engine @' + (L.state().version || '?') + '  ·  see: llm --list · llm --cache');
+    ctx.line('WebLLM engine @' + (llm.state().version || '?') + '  ·  see: llm --list · llm --cache');
     return;
   }
 
   // ---- list recommended models ----
   if (first === '--list' || first === '-l') {
     ctx.line('loading the catalog…');
-    let recs;
-    try { recs = await L.recommended(); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); return; }
+    let recommended;
+    try {
+      recommended = await llm.recommended();
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+      return;
+    }
     ctx.line('');
     ctx.line('Recommended chat models (smallest to largest):');
     ctx.line('');
-    recs.forEach((r, i) => {
+    recommended.forEach((model, i) => {
       ctx.append(
-        '<div class="ln out"><span class="accent">' + (i + 1) + ')</span> ' +
-        '<span class="cmd">' + E(r.label) + '</span> ' +
-        '<span class="comment">download ≈ ' + E(r.gb.toFixed(2)) + ' GB</span><br>' +
-        '<span class="comment">   ' + E(r.id) + '</span></div>',
+        '<div class="ln out"><span class="accent">' +
+          (i + 1) +
+          ')</span> ' +
+          '<span class="cmd">' +
+          E(model.label) +
+          '</span> ' +
+          '<span class="comment">download ≈ ' +
+          E(model.gb.toFixed(2)) +
+          ' GB</span><br>' +
+          '<span class="comment">   ' +
+          E(model.id) +
+          '</span></div>',
       );
     });
     ctx.line('');
@@ -107,8 +129,12 @@ js: |
   if (first === '--list-all') {
     ctx.line('loading…');
     let ids;
-    try { ids = await L.models(); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); return; }
+    try {
+      ids = await llm.models();
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+      return;
+    }
     ctx.line(ids.length + ' models available:');
     ids.forEach((id) => ctx.append('<div class="ln comment">  ' + E(id) + '</div>'));
     return;
@@ -117,17 +143,24 @@ js: |
   // ---- explicit load (with confirmation via ctx.llm.ensure) ----
   if (first === '--load') {
     const id = (args[1] || '').trim();
-    if (!id) { ctx.error('usage: llm --load <model-id>'); return; }
+    if (!id) {
+      ctx.error('usage: llm --load <model-id>');
+      return;
+    }
     let session;
-    try { session = await L.ensure({ base: id, label: id, reason: 'load requested' }); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); return; }
+    try {
+      session = await llm.ensure({ base: id, label: id, reason: 'load requested' });
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+      return;
+    }
     ctx.line(session ? 'model loaded: ' + (session.label || session.modelId) : 'llm: cancelled.');
     return;
   }
 
   // ---- unload ----
   if (first === '--unload' || first === '--stop') {
-    const freed = await L.unload();
+    const freed = await llm.unload();
     ctx.line(freed ? 'model unloaded, GPU memory freed.' : 'no model loaded.');
     return;
   }
@@ -136,11 +169,26 @@ js: |
   if (first === '--cache' || first === '--cached') {
     ctx.line('scanning the cache…');
     let cached;
-    try { cached = await L.cacheList(); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); return; }
-    if (!cached.length) { ctx.line('no models in cache.'); return; }
+    try {
+      cached = await llm.cacheList();
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+      return;
+    }
+    if (!cached.length) {
+      ctx.line('no models in cache.');
+      return;
+    }
     ctx.line(cached.length + ' model(s) in cache:');
-    cached.forEach((id, i) => ctx.append('<div class="ln out"><span class="accent">' + (i + 1) + ')</span> <span class="cmd">' + E(id) + '</span></div>'));
+    cached.forEach((id, i) =>
+      ctx.append(
+        '<div class="ln out"><span class="accent">' +
+          (i + 1) +
+          ')</span> <span class="cmd">' +
+          E(id) +
+          '</span></div>',
+      ),
+    );
     ctx.line('');
     ctx.line('Delete:  llm --rm <id>   ·   all:  llm --rm-all');
     return;
@@ -148,10 +196,18 @@ js: |
 
   // ---- cache: delete one model ----
   if (first === '--rm' || first === '--remove' || first === '--delete') {
-    const arg = (args[1] || '').trim();
-    if (!arg) { ctx.error('usage: llm --rm <model-id-or-substring>'); return; }
-    try { const id = await L.cacheRemove(arg); ctx.line('removed from cache: ' + id); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); }
+    const idOrSubstring = (args[1] || '').trim();
+    if (!idOrSubstring) {
+      ctx.error('usage: llm --rm <model-id-or-substring>');
+      return;
+    }
+    try {
+      // The manager resolves a substring to the one cached id it matches.
+      const removedId = await llm.cacheRemove(idOrSubstring);
+      ctx.line('removed from cache: ' + removedId);
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+    }
     return;
   }
 
@@ -159,13 +215,29 @@ js: |
   if (first === '--rm-all' || first === '--clear-cache') {
     ctx.line('scanning the cache…');
     let cached;
-    try { cached = await L.cacheList(); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); return; }
-    if (!cached.length) { ctx.line('no models in cache.'); return; }
-    const ans = ((await ctx.ask('delete ALL ' + cached.length + ' cached model(s)? [y/N]')) || '').trim().toLowerCase();
-    if (ans !== 'y' && ans !== 'yes') { ctx.line('cancelled.'); return; }
-    try { const n = await L.cacheRemoveAll(); ctx.line('done — freed ' + n + ' model(s) from cache.'); }
-    catch (e) { ctx.error('llm: ' + (e.message || e.name)); }
+    try {
+      cached = await llm.cacheList();
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+      return;
+    }
+    if (!cached.length) {
+      ctx.line('no models in cache.');
+      return;
+    }
+    const answer = ((await ctx.ask('delete ALL ' + cached.length + ' cached model(s)? [y/N]')) || '')
+      .trim()
+      .toLowerCase();
+    if (answer !== 'y' && answer !== 'yes') {
+      ctx.line('cancelled.');
+      return;
+    }
+    try {
+      const removedCount = await llm.cacheRemoveAll();
+      ctx.line('done — freed ' + removedCount + ' model(s) from cache.');
+    } catch (e) {
+      ctx.error('llm: ' + (e.message || e.name));
+    }
     return;
   }
 

@@ -55,81 +55,128 @@ js: |
   const args = ctx.args.slice();
 
   // Parse combinable flags; collect file operands (in order). `--` ends options.
-  let doLines = false, doWords = false, doBytes = false, doChars = false, doLong = false;
+  let doLines = false;
+  let doWords = false;
+  let doBytes = false;
+  let doChars = false;
+  let doLongest = false;
   const files = [];
-  let opts = true;
-  for (const a of args) {
-    if (opts && a === '--') { opts = false; continue; }
-    if (opts && a.length > 1 && a[0] === '-' && a !== '-') {
-      let bad = null;
-      for (const ch of a.slice(1)) {
-        if (ch === 'l') doLines = true;
-        else if (ch === 'w') doWords = true;
-        else if (ch === 'c') doBytes = true;
-        else if (ch === 'm') doChars = true;
-        else if (ch === 'L') doLong = true;
-        else { bad = ch; break; }
-      }
-      if (bad) { ctx.error('wc: invalid option -- ' + bad); return; }
+  let parsingOptions = true;
+  for (const arg of args) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
       continue;
     }
-    files.push(a);
+    // A lone `-` is the stdin operand, not a flag group.
+    if (parsingOptions && arg.length > 1 && arg[0] === '-' && arg !== '-') {
+      let invalidFlag = null;
+      for (const flag of arg.slice(1)) {
+        if (flag === 'l') doLines = true;
+        else if (flag === 'w') doWords = true;
+        else if (flag === 'c') doBytes = true;
+        else if (flag === 'm') doChars = true;
+        else if (flag === 'L') doLongest = true;
+        else {
+          invalidFlag = flag;
+          break;
+        }
+      }
+      if (invalidFlag) {
+        ctx.error('wc: invalid option -- ' + invalidFlag);
+        return;
+      }
+      continue;
+    }
+    files.push(arg);
   }
 
   // Default columns (like real wc): lines, words, bytes.
-  if (!doLines && !doWords && !doBytes && !doChars && !doLong) { doLines = doWords = doBytes = true; }
+  if (!doLines && !doWords && !doBytes && !doChars && !doLongest) {
+    doLines = doWords = doBytes = true;
+  }
+
+  // Piped input may be empty (`grep nomatch file | wc -l`): only ctx.piped tells
+  // an empty pipe from no pipe at all. Older engines lack it: fall back on
+  // "some text came in".
+  const piped = typeof ctx.piped === 'boolean' ? ctx.piped : Boolean(ctx.stdin);
 
   // Resolve the ordered list of sources.
   const sources = [];
   if (!files.length) {
-    if (ctx.stdin) sources.push({ name: '', content: ctx.stdin });
-    else { ctx.error('usage: wc [-lwcmL] <file>...'); return; }
+    if (piped) {
+      // The shell joins a stage's output lines without a final line break, so
+      // the last line would not be counted: restore the newline a real pipe
+      // carries (`ls | wc -l` must count every entry).
+      const text = ctx.stdin;
+      const terminated = text === '' || text.endsWith('\n') ? text : text + '\n';
+      sources.push({ name: '', content: terminated });
+    } else {
+      ctx.error('usage: wc [-lwcmL] <file>...');
+      return;
+    }
   } else {
-    for (const f of files) {
-      if (f === '-') { sources.push({ name: '-', content: ctx.stdin || '' }); continue; }
-      const res = ctx.read(f);
-      if (res.error) { ctx.error('wc: ' + f + ': ' + res.error); continue; }
-      sources.push({ name: res.name || f, content: res.content });
+    for (const file of files) {
+      if (file === '-') {
+        sources.push({ name: '-', content: ctx.stdin || '' });
+        continue;
+      }
+      const res = ctx.read(file);
+      if (res.error) {
+        ctx.error('wc: ' + file + ': ' + res.error);
+        continue;
+      }
+      sources.push({ name: res.name || file, content: res.content });
     }
   }
   if (!sources.length) return;
 
   // Count one source.
-  const count = (s) => {
-    const trimmed = s.trim();
+  const count = (text) => {
+    const trimmed = text.trim();
     let longest = 0;
-    for (const line of s.split('\n')) if (line.length > longest) longest = line.length;
+    for (const line of text.split('\n')) if (line.length > longest) longest = line.length;
     return {
-      lines: (s.match(/\n/g) || []).length,
+      // Like real wc, a line is a newline character: an unterminated last
+      // line is not counted.
+      lines: (text.match(/\n/g) || []).length,
       words: trimmed ? trimmed.split(/\s+/).length : 0,
-      bytes: new TextEncoder().encode(s).length,
-      chars: Array.from(s).length,
+      bytes: new TextEncoder().encode(text).length,
+      chars: Array.from(text).length, // code points, not UTF-16 units
       longest,
     };
   };
 
   // Selected columns, in canonical order.
-  const cols = [];
-  if (doLines) cols.push('lines');
-  if (doWords) cols.push('words');
-  if (doBytes) cols.push('bytes');
-  if (doChars) cols.push('chars');
-  if (doLong) cols.push('longest');
+  const columns = [];
+  if (doLines) columns.push('lines');
+  if (doWords) columns.push('words');
+  if (doBytes) columns.push('bytes');
+  if (doChars) columns.push('chars');
+  if (doLongest) columns.push('longest');
 
-  const rows = sources.map((src) => ({ name: src.name, c: count(src.content) }));
+  const rows = sources.map((source) => ({ name: source.name, counts: count(source.content) }));
   if (rows.length > 1) {
-    const tot = { lines: 0, words: 0, bytes: 0, chars: 0, longest: 0 };
-    for (const r of rows) {
-      for (const k of Object.keys(tot)) tot[k] = k === 'longest' ? Math.max(tot[k], r.c[k]) : tot[k] + r.c[k];
+    // The total row sums every column, except the longest line: that one is
+    // the maximum across the files.
+    const total = { lines: 0, words: 0, bytes: 0, chars: 0, longest: 0 };
+    for (const row of rows) {
+      for (const column of Object.keys(total)) {
+        total[column] =
+          column === 'longest'
+            ? Math.max(total[column], row.counts[column])
+            : total[column] + row.counts[column];
+      }
     }
-    rows.push({ name: 'total', c: tot });
+    rows.push({ name: 'total', counts: total });
   }
 
   // Right-align every count to the widest value, like real wc.
   let width = 1;
-  for (const r of rows) for (const k of cols) width = Math.max(width, String(r.c[k]).length);
-  for (const r of rows) {
-    const nums = cols.map((k) => String(r.c[k]).padStart(width)).join(' ');
-    ctx.line(nums + (r.name ? ' ' + r.name : ''));
+  for (const row of rows) {
+    for (const column of columns) width = Math.max(width, String(row.counts[column]).length);
+  }
+  for (const row of rows) {
+    const numbers = columns.map((column) => String(row.counts[column]).padStart(width)).join(' ');
+    ctx.line(numbers + (row.name ? ' ' + row.name : ''));
   }
 ---

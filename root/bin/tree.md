@@ -26,35 +26,40 @@ man: |
   ## SEE ALSO
   ls, find, cd
 js: |
-  const root = ctx.args.find((a) => !a.startsWith('-')) || '.';
-  const all = ctx.args.some((a) => /^-[a-z]*a/.test(a)); // -a shows dotfiles
-  let dirs = 0, files = 0;
+  const root = ctx.args.find((arg) => !arg.startsWith('-')) || '.';
+  const all = ctx.args.some((arg) => /^-[a-z]*a/.test(arg)); // -a shows dotfiles
+  let dirs = 0;
+  let files = 0;
   const lines = [];
   // Depth-first walk; `ctx.list` returns an error for missing/denied paths,
   // which we simply skip (so /root stays hidden until you `su`).
+  // `prefix` is the drawing inherited from the ancestors: a `│` under each one
+  // that still has siblings to come, blanks under the others.
   const walk = (path, prefix) => {
     const res = ctx.list(path);
     if (res.error || !res.entries) return;
     let entries = res.entries;
-    if (!all) entries = entries.filter((e) => !e.name.startsWith('.'));
-    entries.forEach((e, i) => {
-      const last = i === entries.length - 1;
+    if (!all) entries = entries.filter((entry) => !entry.name.startsWith('.'));
+    entries.forEach((entry, index) => {
+      const last = index === entries.length - 1;
       const branch = last ? '└── ' : '├── ';
-      const cell = e.type === 'dir'
-        ? `<span class="accent">${ctx.escape(e.name)}/</span>`
-        : `<span class="prompt-path">${ctx.escape(e.name)}</span>`;
+      const cell =
+        entry.type === 'dir'
+          ? `<span class="accent">${ctx.escape(entry.name)}/</span>`
+          : `<span class="prompt-path">${ctx.escape(entry.name)}</span>`;
       lines.push(`<div class="ln"><span class="comment">${prefix}${branch}</span>${cell}</div>`);
-      if (e.type === 'dir') {
+      if (entry.type === 'dir') {
         dirs++;
-        walk(`${path}/${e.name}`, prefix + (last ? '    ' : '│   '));
+        walk(`${path}/${entry.name}`, prefix + (last ? '    ' : '│   '));
       } else {
         files++;
       }
     });
   };
   walk(root, '');
-  ctx.append(
-    `<div class="ln"><span class="accent">${ctx.escape(root)}</span></div>` + lines.join(''),
-  );
+  // One append per row: a pipe or a redirection records each append as one
+  // line (`tree | grep md`, `tree | wc -l`).
+  ctx.append(`<div class="ln"><span class="accent">${ctx.escape(root)}</span></div>`);
+  for (const line of lines) ctx.append(line);
   ctx.append(`<div class="ln comment">${dirs} directories, ${files} files</div>`);
 ---

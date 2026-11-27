@@ -11,8 +11,9 @@
  * `terminal.ts`, which reads the data back from injected JSON.
  */
 
+import { execFileSync } from 'node:child_process';
 import { statSync } from 'node:fs';
-import { transformSync } from 'esbuild';
+import { minifySync } from 'vite';
 import { validateCommands } from './commands.ts';
 import type { CmdDef } from './commands.ts';
 import { escapeHtml, isSafeHref } from './html.ts';
@@ -87,20 +88,21 @@ export const tree: VDir = (() => {
  *
  * The block is an *async function body* (top-level `await`/`return`), invalid on
  * its own — so we wrap it in `async function (ctx){…}`, minify, then slice the
- * body back out. Identifiers are kept (`minifyIdentifiers:false`): `ctx` is the
- * runtime-injected parameter and locals can be referenced via the AsyncFunction
- * scope, so renaming them would be unsafe; only whitespace, comments and syntax
- * are compacted (~30 % smaller). This is size/tidiness, NOT real protection —
- * client JS is always recoverable. On any failure, fall back to the source.
+ * body back out. Only whitespace and comments are removed (no `compress`, no
+ * `mangle`): `ctx` is the runtime-injected parameter, and some commands
+ * stringify their own functions to run them in a Web Worker (`hashcat`,
+ * `grep`), so renaming or restructuring the code would be unsafe. This is
+ * size/tidiness, NOT real protection — client JS is always recoverable. On any
+ * failure, fall back to the source.
  */
 function minifyJs(js: string): string {
   try {
-    const out = transformSync(`async function __cmd(ctx){\n${js}\n}`, {
-      loader: 'js',
-      minifyWhitespace: true,
-      minifySyntax: true,
-      minifyIdentifiers: false,
-    }).code.trim();
+    const result = minifySync('command.js', `async function __cmd(ctx){\n${js}\n}`, {
+      compress: false,
+      mangle: false,
+    });
+    if (result.errors.length) return js;
+    const out = result.code.trim();
     const open = out.indexOf('{');
     const close = out.lastIndexOf('}');
     return open >= 0 && close > open ? out.slice(open + 1, close).trim() : js;
@@ -168,20 +170,32 @@ function metaFromMarkdown(md: string, slug: string): { title: string; desc: stri
 // or backtick inside a URL can't be mistaken for emphasis/code; then code, then
 // bold before italic (so `**x**` isn't eaten by the single-`*` rule). A link
 // with an unsafe scheme (`javascript:`, …) keeps only its text.
-const inlineMd = (s: string): string =>
-  escapeHtml(s)
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) =>
-      isSafeHref(url) ? `<a href="${url}" rel="noopener">${text}</a>` : text,
-    )
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+const inlineMd = (s: string): string => {
+  // Finished links wait behind a NUL-delimited placeholder while the other
+  // rules run, so nothing can rewrite the inside of an `href`.
+  const links: string[] = [];
+  return (
+    escapeHtml(s.replaceAll('\u0000', ''))
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) =>
+        isSafeHref(url)
+          ? `\u0000${links.push(`<a href="${url}" rel="noopener">${text}</a>`) - 1}\u0000`
+          : text,
+      )
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      // eslint-disable-next-line no-control-regex -- the placeholders above
+      .replace(/\u0000(\d+)\u0000/g, (_m, index: string) => links[Number(index)])
+  );
+};
 
 /**
- * Render a command's `man` markdown to semantic HTML for server-side SEO: ATX
- * headings become <h1>/<h2>, and consecutive non-blank lines are joined into a
- * <p>. The terminal still renders the rich, interactive version on the client;
- * this is the crawlable mirror, emitted inside a visually-hidden block.
+ * Render a command's `man` markdown (or a home document) to semantic HTML:
+ * ATX headings become <h1>/<h2>, and consecutive non-blank lines form one <p>.
+ * This is what a landing page shows in its terminal window before any script
+ * runs (see `Terminal.astro`), so it is both the visible content and what
+ * search engines index. Lines keep their breaks and inner spacing — a manual
+ * aligns its option tables with spaces — and the page styles them `pre-wrap`.
  */
 export function manToHtml(md: string, isLinkable: (name: string) => boolean = () => false): string {
   let html = '';
@@ -190,7 +204,7 @@ export function manToHtml(md: string, isLinkable: (name: string) => boolean = ()
   let inSeeAlso = false;
   const flushPara = () => {
     if (para.length) {
-      const joined = para.join(' ');
+      const joined = para.join('\n');
       // In "SEE ALSO", turn each command name that owns a page into a link to it.
       const inner = inSeeAlso
         ? escapeHtml(joined).replace(/[\w-]+/g, (tok) =>
@@ -237,7 +251,7 @@ export function manToHtml(md: string, isLinkable: (name: string) => boolean = ()
     } else if (list.length) {
       list[list.length - 1] += ` ${line}`; // wrapped continuation of a list item
     } else {
-      para.push(line);
+      para.push(raw.trimEnd()); // leading spaces are layout (indented examples)
     }
   }
   flush();
@@ -328,13 +342,46 @@ const HOME_DIR = `root${site.shell.home.replace(/\/+$/, '')}`;
  */
 export function lastmod(slug: string): string | null {
   for (const path of [`root/bin/${slug}.md`, `${HOME_DIR}/${slug}.md`]) {
-    try {
-      return statSync(path).mtime.toISOString().slice(0, 10);
-    } catch {
-      // try the next candidate
-    }
+    const date = sourceDate(path);
+    if (date) return date;
   }
   return null;
+}
+
+const sourceDates = new Map<string, string | null>();
+
+/**
+ * Date (YYYY-MM-DD) a source file last changed, or null if it doesn't exist.
+ * The date of its last commit is preferred: a file's mtime is the checkout
+ * time on a fresh clone (CI, a new server), which would stamp every page with
+ * the build date. The mtime remains the fallback — an uncommitted file, a
+ * shallow clone without the history, or no git at all.
+ */
+function sourceDate(path: string): string | null {
+  const known = sourceDates.get(path);
+  if (known !== undefined) return known;
+  let date: string | null = null;
+  try {
+    const mtime = statSync(path).mtime.toISOString().slice(0, 10);
+    date = committedDate(path) ?? mtime;
+  } catch {
+    // no such file
+  }
+  sourceDates.set(path, date);
+  return date;
+}
+
+/** Commit date of the last change to `path`, or null when git can't tell. */
+function committedDate(path: string): string | null {
+  try {
+    const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', path], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The routes search engines should see (sitemap, internal link mesh). */

@@ -8,7 +8,7 @@
   "license": "MIT",
   "homepage": "https://ludovic.toinel.com",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "prepare": "node scripts/ensure-site-config.ts",
@@ -21,11 +21,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "check:commands": "node scripts/check-commands.ts",
+    "check:commands": "node scripts/check-commands.ts && node scripts/format-commands.ts --check",
+    "format:commands": "node scripts/format-commands.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write .",
+    "format": "prettier --write . && node scripts/format-commands.ts",
     "format:check": "prettier --check .",
     "astro": "astro",
     "upgrade": "ncu",
@@ -40,24 +41,27 @@
     "@iconify-json/lucide": "^1.2.0",
     "@mlc-ai/web-llm": "^0.2.85",
     "@tailwindcss/vite": "^4.1.0",
-    "astro": "^5.8.0",
-    "astro-icon": "^1.1.5",
+    "astro": "^7.4.13",
+    "astro-icon": "^1.2.0",
     "tailwindcss": "^4.1.0"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
+    "@astrojs/check": "^0.9.12",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.4",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.1.2",
     "eslint": "^10.4.1",
-    "eslint-plugin-astro": "^1.7.0",
+    "eslint-plugin-astro": "^3.2.2",
     "globals": "^17.6.0",
     "npm-check-updates": "^17.1.0",
     "prettier": "^3.8.3",
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.60.1",
-    "vite": "^6.4.3",
-    "vitest": "^4.1.8"
+    "vite": "^8.4.0",
+    "vitest": "^5.1.2"
+  },
+  "overrides": {
+    "@astrojs/compiler-rs": "0.5.2"
   }
 }

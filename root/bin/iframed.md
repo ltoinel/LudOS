@@ -49,7 +49,10 @@ man: |
   open, httpstest
 js: |
   const url = ctx.args[0];
-  if (!url) { ctx.error('usage: iframed <url>'); return; }
+  if (!url) {
+    ctx.error('usage: iframed <url>');
+    return;
+  }
   const err = ctx.iframe(url);
   if (err) ctx.error(`iframed: ${err}`);
   else ctx.line(`framing ${url} …`);

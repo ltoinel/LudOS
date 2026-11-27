@@ -62,8 +62,9 @@ man: |
   `help -k <keyword>` finds the commands whose manual mentions a keyword
   (plain `help` would only repeat the list it already has). It also receives the whole catalog of usable
   commands (`denree --commands`) and the manuals of the most relevant ones. Commands
-  with side effects, endless or heavy ones (rm, su, msg, open, dl, top,
-  hashcat, httperf, todo, say, the LLM commands…) are blocked for safety,
+  with side effects, endless or heavy ones (rm, touch, mkdir, nano, su, msg,
+  open, dl, top, hashcat, ping, httperf, httpstest, todo, say, the LLM
+  commands…) are blocked for safety, as is any output redirection (> or >>),
   and interactive commands get no keyboard input.
 
   The model comes from the central LLM module (see `llm` and the widget in
@@ -116,14 +117,57 @@ js: |
   // Reasoning model proposed when nothing is loaded yet.
   const DEFAULT_MODEL = { base: 'Qwen2.5-1.5B-Instruct', label: 'Qwen2.5 1.5B', gb: 1.0 };
 
-  // Commands the agent must never run: mutations with no undo, control flow,
-  // side effects (network pings of the owner, downloads, audio, timers,
-  // request bursts at a host), endless or CPU-heavy commands, and the LLM
-  // commands themselves.
+  // Commands the agent must never run: mutations of the filesystem (rm, touch,
+  // mkdir, nano), control flow, side effects (network pings of the owner,
+  // downloads, audio, timers, request bursts or probes aimed at a host the
+  // model picked: ping, httperf, httpstest), endless or CPU-heavy commands,
+  // and the LLM commands themselves. The read-only lookups the agent exists
+  // for (checkip, weather, geoip, nslookup, whois) stay usable.
   const DENY = new Set([
-    'rm', 'su', 'sudo', 'exit', 'clear', 'boot', 'msg', 'open', 'iframed', 'theme',
-    'bell', 'miaougpt', 'llm', 'glaude', 'denree', 'shutdown', 'reboot', 'dl',
-    'pomodoro', 'say', 'top', 'hashcat', 'todo', 'history', 'httperf', 'nano',
+    'rm',
+    'su',
+    'sudo',
+    'exit',
+    'clear',
+    'boot',
+    'msg',
+    'open',
+    'iframed',
+    'theme',
+    'bell',
+    'miaougpt',
+    'llm',
+    'glaude',
+    'denree',
+    'shutdown',
+    'reboot',
+    'dl',
+    'pomodoro',
+    'say',
+    'top',
+    'hashcat',
+    'todo',
+    'history',
+    'httperf',
+    'nano',
+    'touch',
+    'mkdir',
+    'ping',
+    'httpstest',
+    // More filesystem and shell-state mutations.
+    'cp',
+    'mv',
+    'alias',
+    'unalias',
+    'kill',
+    // A request to any URL the model picks.
+    'curl',
+    // Endless, timed or purely visual: they would only stall the agent.
+    'watch',
+    'yes',
+    'sleep',
+    'cmatrix',
+    'sl',
   ]);
 
   // ------------------------------------------------------------------ options
@@ -189,7 +233,9 @@ js: |
   // guesses command syntax poorly, so the SYNOPSIS/OPTIONS of the most relevant
   // commands are injected into its context. The manuals are English.
   const STOP_WORDS = new Set(
-    'the a an of to in on at by for and or is are be with from as this that it your you my via eg use using into what how'.split(' '),
+    'the a an of to in on at by for and or is are be with from as this that it your you my via eg use using into what how'.split(
+      ' ',
+    ),
   );
   const tokenize = (text) =>
     ((text || '').toLowerCase().match(/[a-z0-9][a-z0-9.+_-]*/g) || []).filter(
@@ -280,7 +326,7 @@ js: |
 
   // No goal on the command line (e.g. the dock's "ask AI" tile): ask for it.
   if (!goal) {
-    ctx.line('Ask me anything — I will use the terminal\'s commands to find the answer. Examples:');
+    ctx.line("Ask me anything — I will use the terminal's commands to find the answer. Examples:");
     ctx.line('  what is my public IP address and its country?');
     ctx.line('  summarize about.md in one sentence');
     ctx.line('');
@@ -347,10 +393,10 @@ js: |
   // The system prompt shared by every call: who the agent is, where it runs,
   // and how it can discover the commands it may use.
   const SYSTEM_CONTEXT =
-    'You are Denree, an AI agent running entirely in the user\'s web browser ' +
+    "You are Denree, an AI agent running entirely in the user's web browser " +
     '(a local language model on WebGPU, no server). You operate inside LudOS, a ' +
     'website that simulates a Linux environment with its own shell commands. You are ' +
-    'free to use these commands to answer the user\'s requests. To find a command, ' +
+    "free to use these commands to answer the user's requests. To find a command, " +
     'run `help -k <keyword>`: it lists the commands whose manual mentions the keyword ' +
     '(e.g. help -k weather); `man <command>` shows how to use one. Plain `help` adds ' +
     'nothing: every command is already listed below.';
@@ -413,7 +459,10 @@ js: |
       if (promptTokens) {
         const measured = chars / promptTokens;
         // Follow a denser text at once, a lighter one halfway.
-        charsPerToken = Math.min(5, Math.max(1.2, measured < charsPerToken ? measured : (charsPerToken + measured) / 2));
+        charsPerToken = Math.min(
+          5,
+          Math.max(1.2, measured < charsPerToken ? measured : (charsPerToken + measured) / 2),
+        );
       }
       const text = ((result && result.content) || '').trim();
       return schema ? parseJson(text) || {} : text;
@@ -454,7 +503,8 @@ js: |
   };
 
   // Keeps the start of a text that must fit in `limit` characters.
-  const clip = (text, limit) => (text.length > limit ? text.slice(0, Math.max(0, limit - 1)) + '…' : text);
+  const clip = (text, limit) =>
+    text.length > limit ? text.slice(0, Math.max(0, limit - 1)) + '…' : text;
 
   const TERMINAL_RULES =
     'Command rules: use only the commands listed, by their plain name, one single line ' +
@@ -501,7 +551,10 @@ js: |
     );
   const failuresText = () =>
     failures.length
-      ? failures.map((f) => `- $ ${f.command} → ${f.reason}`).join('\n').slice(-800)
+      ? failures
+          .map((f) => `- $ ${f.command} → ${f.reason}`)
+          .join('\n')
+          .slice(-800)
       : '(none)';
 
   // ------------------------------------------------------------ ACT
@@ -521,6 +574,22 @@ js: |
   };
   const attempted = new Set(); // every normalized command tried, valid or not
 
+  // True when the line holds a `>` outside quotes: an output redirection would
+  // let any allowed command (echo, cat…) write a file, bypassing the deny list.
+  const hasRedirection = (line) => {
+    let openQuote = '';
+    for (const char of line) {
+      if (openQuote) {
+        if (char === openQuote) openQuote = '';
+      } else if (char === '"' || char === "'") {
+        openQuote = char;
+      } else if (char === '>') {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Checks every pipeline stage is a real, allowed command, then runs it
   // headlessly. Returns { command, name, ok, observation, repeated? }.
   const execute = async (rawCommand) => {
@@ -532,8 +601,21 @@ js: |
     if (ran.has(command)) {
       return { command, name, ok: false, observation: ran.get(command), repeated: true };
     }
+    if (hasRedirection(command)) {
+      return {
+        command,
+        name,
+        ok: false,
+        observation: 'output redirection (> or >>) is not allowed: run the command without it.',
+      };
+    }
     if (names.some((n) => /^(?:ba|z)?sh$/.test(n))) {
-      return { command, name, ok: false, observation: 'there is no shell: run the command directly.' };
+      return {
+        command,
+        name,
+        ok: false,
+        observation: 'there is no shell: run the command directly.',
+      };
     }
     const unknown = names.find((n) => !isKnown(n));
     if (unknown) {
@@ -668,7 +750,10 @@ js: |
     const preview = result.observation.replace(/\s+/g, ' ').slice(0, 140);
     const node = addNode(parent, '▸', result.command, result.ok ? 'ok' : 'fail', preview);
     if (result.repeated) {
-      failures.push({ command: result.command, reason: 'already run — use its facts or try another command' });
+      failures.push({
+        command: result.command,
+        reason: 'already run — use its facts or try another command',
+      });
       return false;
     }
     // A lookup (help -k weather, man weather) is remembered for the next
@@ -679,15 +764,22 @@ js: |
         // The commands it points at get their manual in the next prompts:
         // `man x` names one, `help -k` lists one per line (name first).
         const words = result.command.split(/\s+/);
-        const found = (result.name === 'man'
-          ? [words[1]]
-          : result.observation.split('\n').map((line) => line.trim().split(/\s+/)[0])
+        const found = (
+          result.name === 'man'
+            ? [words[1]]
+            : result.observation.split('\n').map((line) => line.trim().split(/\s+/)[0])
         ).filter((name) => name && commandByName(name) && name !== 'help');
         for (const name of found.slice(0, 2).reverse()) {
           const canonical = commandByName(name).name;
           if (!lookedUp.includes(canonical)) lookedUp.unshift(canonical);
         }
-        addNode(node, '📖', 'noted for the next decision', 'info', found.length ? `manuals: ${found.slice(0, 2).join(', ')}` : '');
+        addNode(
+          node,
+          '📖',
+          'noted for the next decision',
+          'info',
+          found.length ? `manuals: ${found.slice(0, 2).join(', ')}` : '',
+        );
       } else {
         failures.push({ command: result.command, reason: result.observation.slice(0, 160) });
         addNode(node, '✗', 'nothing found', 'fail');
@@ -700,7 +792,14 @@ js: |
         const rules = REFLECT_RULES;
         const output = clip(result.observation, Math.max(300, Math.min(1500, budget * 0.45)));
         const manual = clip(manualOf(result.name), Math.max(0, Math.min(700, budget * 0.2)));
-        const room = budget - rules.length - manual.length - output.length - goal.length - result.command.length - 60;
+        const room =
+          budget -
+          rules.length -
+          manual.length -
+          output.length -
+          goal.length -
+          result.command.length -
+          60;
         return {
           system: rules + '\n\n' + manual,
           user:
@@ -712,7 +811,8 @@ js: |
     );
     const extracted = (reflection.facts || '').trim();
     // Small models sometimes "extract" a placeholder: that is no evidence.
-    const isPlaceholder = /^(n\/?a|none|null|unknown|nothing|empty|no (data|facts|information)|-+)\.?$/i.test(extracted);
+    const isPlaceholder =
+      /^(n\/?a|none|null|unknown|nothing|empty|no (data|facts|information)|-+)\.?$/i.test(extracted);
     if (reflection.useful && extracted && !isPlaceholder) {
       facts.push({ command: result.command, facts: extracted });
       addNode(node, '✓', 'useful', 'ok', extracted.slice(0, 200));
@@ -734,7 +834,9 @@ js: |
       '📏',
       `context window: ${contextWindow} tokens`,
       'info',
-      catalog.length > promptBudget(200) * 0.3 ? 'small window — compact command list, shorter prompts' : '',
+      catalog.length > promptBudget(200) * 0.3
+        ? 'small window — compact command list, shorter prompts'
+        : '',
     );
     if (goalManuals.length) {
       addNode(root, '📚', `manuals: ${goalManuals.map((c) => c.name).join(', ')}`, 'info');
@@ -752,23 +854,36 @@ js: |
       'A later step may depend on an earlier result: write it as a question, the ' +
       'command will be decided when that result is known.\n' +
       TERMINAL_RULES;
-    const plan = !needsPlan ? { analysis: 'short goal — no plan needed', steps: [] } : await think(
-      (budget) => {
-        const system = PLAN_RULES + '\n\n' + catalogFor(budget);
-        const room = budget - system.length - goal.length - 10;
-        return { system: system + '\n\n' + manualsText(Math.max(0, Math.min(2600, room))), user: `Goal: ${goal}` };
-      },
-      { schema: PLAN_SCHEMA, maxTokens: 320 },
-    );
+    const plan = !needsPlan
+      ? { analysis: 'short goal — no plan needed', steps: [] }
+      : await think(
+          (budget) => {
+            const system = PLAN_RULES + '\n\n' + catalogFor(budget);
+            const room = budget - system.length - goal.length - 10;
+            return {
+              system: system + '\n\n' + manualsText(Math.max(0, Math.min(2600, room))),
+              user: `Goal: ${goal}`,
+            };
+          },
+          { schema: PLAN_SCHEMA, maxTokens: 320 },
+        );
     const hints = (Array.isArray(plan.steps) ? plan.steps : [])
       .filter((s) => s && typeof s.question === 'string')
       .slice(0, 6);
-    const planNode = addNode(root, '🧭', needsPlan ? 'plan' : 'plan skipped', 'info', (plan.analysis || '').slice(0, 220));
+    const planNode = addNode(
+      root,
+      '🧭',
+      needsPlan ? 'plan' : 'plan skipped',
+      'info',
+      (plan.analysis || '').slice(0, 220),
+    );
     for (const hint of hints) {
       addNode(planNode, '?', hint.question, 'info', hint.command ? `→ ${hint.command}` : '');
     }
     const planText = hints.length
-      ? hints.map((h, i) => `${i + 1}. ${h.question}${h.command ? ` (maybe: ${h.command})` : ''}`).join('\n')
+      ? hints
+          .map((h, i) => `${i + 1}. ${h.question}${h.command ? ` (maybe: ${h.command})` : ''}`)
+          .join('\n')
       : '(no plan)';
 
     // When the model gets stuck repeating itself, the agent falls back on the
@@ -816,7 +931,9 @@ js: |
           let room = budget - rules.length - head.length - tail.length;
           const factsPart = `Facts so far:\n${factsText(Math.max(200, Math.min(2400, room * 0.5)))}\n\n`;
           room -= factsPart.length;
-          const lookups = discoveries.length ? discoveriesText(Math.max(150, Math.min(1200, room * 0.4))) : '';
+          const lookups = discoveries.length
+            ? discoveriesText(Math.max(150, Math.min(1200, room * 0.4)))
+            : '';
           const lookupsPart = lookups ? `Command lookups (help / man):\n${lookups}\n\n` : '';
           room -= lookupsPart.length;
           return {
@@ -868,7 +985,12 @@ js: |
     // A small model grades its own settled answer poorly — not worth a call.
     const review = options.candidates > 1 || (options.rounds > 0 && !resolved);
     for (let round = 0; round <= options.rounds && !aborted(); round++) {
-      const draftsNode = addNode(root, '✎', `synthesis${round ? ` (round ${round + 1})` : ''}`, 'info');
+      const draftsNode = addNode(
+        root,
+        '✎',
+        `synthesis${round ? ` (round ${round + 1})` : ''}`,
+        'info',
+      );
       const scored = [];
       for (let i = 0; i < options.candidates && !aborted(); i++) {
         const draft = await synthesize(i === 0 ? 0 : 0.7);
@@ -881,7 +1003,13 @@ js: |
         const grade = await critique(draft);
         const score = Math.max(0, Math.min(10, Number(grade.score) || 0));
         scored.push({ draft, score, review: grade });
-        addNode(draftsNode, '◇', `candidate ${i + 1} — score ${score}/10`, score >= 6 ? 'ok' : 'fail', draft.slice(0, 160));
+        addNode(
+          draftsNode,
+          '◇',
+          `candidate ${i + 1} — score ${score}/10`,
+          score >= 6 ? 'ok' : 'fail',
+          draft.slice(0, 160),
+        );
       }
       if (!scored.length) break;
       scored.sort((a, b) => b.score - a.score);
@@ -891,7 +1019,12 @@ js: |
 
       const followUp = (best.review.command || '').trim();
       if (!review || best.score >= 8 || round >= options.rounds || !followUp) break;
-      const gapNode = addNode(draftsNode, '⚑', `missing: ${best.review.missing || 'more evidence'}`, 'fail');
+      const gapNode = addNode(
+        draftsNode,
+        '⚑',
+        `missing: ${best.review.missing || 'more evidence'}`,
+        'fail',
+      );
       const before = facts.length;
       await step(followUp, gapNode);
       if (facts.length === before) break; // the extra command brought nothing new

@@ -49,14 +49,16 @@ man: |
   say, asciiart, motd
 js: |
   const E = ctx.escape;
-  const a = ctx.args[0];
-  if (a && !['-q', '--quote', '-j', '--joke'].includes(a)) {
+  const option = ctx.args[0];
+  if (option && !['-q', '--quote', '-j', '--joke'].includes(option)) {
     ctx.error('usage: fortune [-q | -j]');
     return;
   }
-  const kind = a === '-q' || a === '--quote' ? 'quote'
-    : a === '-j' || a === '--joke' ? 'joke'
-      : Math.random() < 0.5 ? 'quote' : 'joke';
+  // No option: a coin toss between a quote and a joke.
+  let kind;
+  if (option === '-q' || option === '--quote') kind = 'quote';
+  else if (option === '-j' || option === '--joke') kind = 'joke';
+  else kind = Math.random() < 0.5 ? 'quote' : 'joke';
 
   // Offline fallbacks, so the command always has something to say.
   const LOCAL = {
@@ -64,23 +66,27 @@ js: |
       ['Simplicity is prerequisite for reliability.', 'Edsger W. Dijkstra'],
       ['Make it work, make it right, make it fast.', 'Kent Beck'],
       ['Talk is cheap. Show me the code.', 'Linus Torvalds'],
-      ['Programs must be written for people to read, and only incidentally for machines to execute.', 'Harold Abelson'],
+      [
+        'Programs must be written for people to read, and only incidentally for machines to execute.',
+        'Harold Abelson',
+      ],
     ],
     joke: [
-      'There are 10 kinds of people: those who understand binary and those who don\'t.',
+      "There are 10 kinds of people: those who understand binary and those who don't.",
       'A SQL query walks into a bar, walks up to two tables and asks: "Can I join you?"',
-      'It works on my machine. — Then we\'ll ship your machine.',
+      "It works on my machine. — Then we'll ship your machine.",
       'Why do programmers prefer dark mode? Because light attracts bugs.',
     ],
   };
 
   // Fetch with a short timeout, cancelled by Ctrl+C as well.
-  const get = async (url) => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    ctx.signal?.addEventListener('abort', () => ctrl.abort(), { once: true });
+  const TIMEOUT_MS = 5000;
+  const fetchJson = async (url) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    ctx.signal?.addEventListener('abort', () => controller.abort(), { once: true });
     try {
-      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+      const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
     } finally {
@@ -89,25 +95,31 @@ js: |
   };
 
   let text;
-  let by = '';
+  let author = '';
   try {
     if (kind === 'quote') {
-      const q = await get('https://dummyjson.com/quotes/random');
-      text = q.quote;
-      by = q.author;
+      const quote = await fetchJson('https://dummyjson.com/quotes/random');
+      text = quote.quote;
+      author = quote.author;
     } else {
-      const j = await get('https://v2.jokeapi.dev/joke/Programming?safe-mode');
-      text = j.type === 'twopart' ? `${j.setup}\n${j.delivery}` : j.joke;
+      const joke = await fetchJson('https://v2.jokeapi.dev/joke/Programming?safe-mode');
+      // A joke is either a one-liner or a setup followed by its punchline.
+      text = joke.type === 'twopart' ? `${joke.setup}\n${joke.delivery}` : joke.joke;
     }
     if (!text) throw new Error('empty answer');
   } catch {
     if (ctx.signal?.aborted) return;
+    // Offline, blocked or malformed answer: fall back on the built-in list
+    // (quotes are [text, author] pairs, jokes plain strings).
     const pool = LOCAL[kind];
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    [text, by] = Array.isArray(pick) ? pick : [pick, ''];
+    const fallback = pool[Math.floor(Math.random() * pool.length)];
+    [text, author] = Array.isArray(fallback) ? fallback : [fallback, ''];
   }
 
-  const lines = text.split('\n').map((l) => `<div class="ln"><span class="accent text-glow">${E(l)}</span></div>`);
-  ctx.append(`${kind === 'quote' ? '<div class="ln comment">“</div>' : ''}${lines.join('')}` +
-    (by ? `<div class="ln comment">    — ${E(by)}</div>` : ''));
+  const lines = text
+    .split('\n')
+    .map((line) => `<div class="ln"><span class="accent text-glow">${E(line)}</span></div>`);
+  const openingMark = kind === 'quote' ? '<div class="ln comment">“</div>' : '';
+  const signature = author ? `<div class="ln comment">    — ${E(author)}</div>` : '';
+  ctx.append(`${openingMark}${lines.join('')}` + signature);
 ---

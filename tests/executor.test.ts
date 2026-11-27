@@ -97,3 +97,23 @@ describe('executor — capture', () => {
     expect(screen).toEqual(['GOT INNER\nAFTER']);
   });
 });
+
+describe('piped flag', () => {
+  it('tells an empty stdin from no pipe at all', async () => {
+    const seen: boolean[] = [];
+    const ex: Executor = createExecutor({
+      runStage: async (stage) => {
+        // `quiet` prints nothing, so the next stage gets an empty stdin.
+        if (stage.name === 'probe') seen.push(ex.state.piped);
+      },
+      readFile: () => null,
+      writeFile: () => null,
+      printErr: () => {},
+    });
+    await ex.execute('probe');
+    await ex.execute('quiet | probe');
+    await ex.execute('probe');
+    expect(seen).toEqual([false, true, false]);
+    expect(ex.state.stdin).toBe('');
+  });
+});

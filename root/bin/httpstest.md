@@ -47,30 +47,49 @@ js: |
   const E = ctx.escape;
   // Target: the given host (any pasted URL is reduced to its hostname), or the
   // current terminal host by default.
-  let host = (ctx.args.find((a) => !a.startsWith('-')) || ctx.cfg.host || location.hostname || '').trim();
-  host = host.replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').replace(/:\d+$/, '');
-  if (!host) { ctx.error('usage: httpstest <host>'); return; }
+  let host = (
+    ctx.args.find((arg) => !arg.startsWith('-')) ||
+    ctx.cfg.host ||
+    location.hostname ||
+    ''
+  ).trim();
+  host = host
+    .replace(/^[a-z]+:\/\//i, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/:\d+$/, '');
+  if (!host) {
+    ctx.error('usage: httpstest <host>');
+    return;
+  }
 
-  const row = (k, vHtml) =>
+  // One `Label: value` line. The value is trusted HTML (see `plain` for text).
+  const row = (label, valueHtml) =>
     ctx.append(
-      `<div class="ln"><span class="accent" style="display:inline-block;min-width:10ch">${E(k)}</span><span class="comment">: </span>${vHtml}</div>`,
+      `<div class="ln"><span class="accent" style="display:inline-block;min-width:10ch">${E(label)}</span><span class="comment">: </span>${valueHtml}</div>`,
     );
-  const out = (s) => `<span class="out">${E(String(s))}</span>`;
+  const plain = (value) => `<span class="out">${E(String(value))}</span>`;
+  const COLOR_BAD = '#ff6b6b';
 
   ctx.line(`checking HTTPS for ${E(host)} …`);
 
   // 1) Browser-observable: does the TLS handshake succeed? `no-cors` means we
   //    cannot read the response, but a failed handshake/connection rejects.
+  const HANDSHAKE_TIMEOUT_MS = 8000;
   let reachable;
-  let rtt = 0;
+  let roundTripMs = 0;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    if (ctx.signal) ctx.signal.addEventListener('abort', () => ctrl.abort()); // Ctrl+C
-    const t0 = performance.now();
-    await fetch(`https://${host}/`, { mode: 'no-cors', cache: 'no-store', redirect: 'follow', signal: ctrl.signal });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HANDSHAKE_TIMEOUT_MS);
+    if (ctx.signal) ctx.signal.addEventListener('abort', () => controller.abort()); // Ctrl+C
+    const sentAt = performance.now();
+    await fetch(`https://${host}/`, {
+      mode: 'no-cors',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
     clearTimeout(timer);
-    rtt = performance.now() - t0;
+    roundTripMs = performance.now() - sentAt;
     reachable = true;
   } catch {
     reachable = false;
@@ -78,53 +97,70 @@ js: |
 
   // 2) Security grade via Mozilla HTTP Observatory (CORS-enabled). Grades the
   //    HTTP security headers; a live scan can take a few seconds.
-  let data = null;
-  let apiErr = null;
+  const SCAN_TIMEOUT_MS = 25000;
+  let scan = null;
+  let scanError = null;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
-    if (ctx.signal) ctx.signal.addEventListener('abort', () => ctrl.abort()); // Ctrl+C
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
+    if (ctx.signal) ctx.signal.addEventListener('abort', () => controller.abort()); // Ctrl+C
     const res = await fetch(
       `https://observatory-api.mdn.mozilla.net/api/v2/scan?host=${encodeURIComponent(host)}`,
-      { method: 'POST', cache: 'no-store', signal: ctrl.signal },
+      { method: 'POST', cache: 'no-store', signal: controller.signal },
     );
     clearTimeout(timer);
-    data = await res.json().catch(() => null);
-    if (data && data.error) apiErr = String(data.error);
-    else if (!res.ok) apiErr = 'HTTP ' + res.status;
+    // An error answer may still be JSON carrying its own message: prefer it
+    // over the bare HTTP status.
+    scan = await res.json().catch(() => null);
+    if (scan && scan.error) scanError = String(scan.error);
+    else if (!res.ok) scanError = 'HTTP ' + res.status;
   } catch (e) {
-    apiErr = e.name === 'AbortError' ? 'timed out' : (e.message || 'request failed');
+    scanError = e.name === 'AbortError' ? 'timed out' : e.message || 'request failed';
   }
 
-  row('Host', out(host));
+  row('Host', plain(host));
   row(
     'HTTPS',
     reachable
-      ? `<span class="accent text-glow">reachable</span> <span class="comment">(TLS handshake OK · ${rtt.toFixed(0)} ms)</span>`
-      : '<span style="color:#ff6b6b">unreachable over HTTPS</span>',
+      ? `<span class="accent text-glow">reachable</span> <span class="comment">(TLS handshake OK · ${roundTripMs.toFixed(0)} ms)</span>`
+      : `<span style="color:${COLOR_BAD}">unreachable over HTTPS</span>`,
   );
 
-  if (data && data.grade) {
-    const g = String(data.grade);
-    const color =
-      g[0] === 'A' ? 'class="accent text-glow"'
-      : (g[0] === 'B' || g[0] === 'C') ? 'style="color:var(--amber)"'
-      : 'style="color:#ff6b6b"';
-    row('Grade', `<span ${color}>${E(g)}</span> <span class="comment">(score ${E(String(data.score))})</span>`);
-    if (data.tests_quantity != null) {
-      const failed = data.tests_failed ? ` · ${data.tests_failed} failed` : '';
-      row('Checks', out(`${data.tests_passed}/${data.tests_quantity} passed${failed}`));
+  if (scan && scan.grade) {
+    // Grades run from A+ to F: the letter alone picks the colour.
+    const grade = String(scan.grade);
+    const letter = grade[0];
+    let gradeStyle = `style="color:${COLOR_BAD}"`;
+    if (letter === 'A') gradeStyle = 'class="accent text-glow"';
+    else if (letter === 'B' || letter === 'C') gradeStyle = 'style="color:var(--amber)"';
+    row(
+      'Grade',
+      `<span ${gradeStyle}>${E(grade)}</span> <span class="comment">(score ${E(String(scan.score))})</span>`,
+    );
+    if (scan.tests_quantity != null) {
+      const failed = scan.tests_failed ? ` · ${scan.tests_failed} failed` : '';
+      row('Checks', plain(`${scan.tests_passed}/${scan.tests_quantity} passed${failed}`));
     }
-    if (data.scanned_at) {
-      row('Scanned', out(new Date(data.scanned_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })));
+    if (scan.scanned_at) {
+      const scannedAt = new Date(scan.scanned_at).toLocaleString('en-GB', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+      row('Scanned', plain(scannedAt));
     }
-    if (data.details_url) ctx.line(`→ [full header report](${data.details_url})`);
+    if (scan.details_url) ctx.line(`→ [full header report](${scan.details_url})`);
   } else {
-    ctx.error(`httpstest: security grade unavailable${apiErr ? ' (' + apiErr + ')' : ''}`);
+    ctx.error(`httpstest: security grade unavailable${scanError ? ' (' + scanError + ')' : ''}`);
   }
 
   ctx.line('');
-  ctx.append('<div class="ln comment"># the grade covers HTTP security headers (Mozilla Observatory); the browser</div>');
-  ctx.append('<div class="ln comment"># cannot read TLS versions/ciphers. For the full TLS audit:</div>');
-  ctx.line(`→ [SSL Labs full TLS audit](https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(host)})`);
+  ctx.append(
+    '<div class="ln comment"># the grade covers HTTP security headers (Mozilla Observatory); the browser</div>',
+  );
+  ctx.append(
+    '<div class="ln comment"># cannot read TLS versions/ciphers. For the full TLS audit:</div>',
+  );
+  ctx.line(
+    `→ [SSL Labs full TLS audit](https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(host)})`,
+  );
 ---

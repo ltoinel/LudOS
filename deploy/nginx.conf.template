@@ -33,11 +33,19 @@ server {
 
     # --- Content-Security-Policy ---------------------------------------------
     # 'unsafe-eval': dynamic commands run via AsyncFunction; blob: workers: hashcat.
+    # 'unsafe-inline': the inline bootstrap scripts of Layout.astro and the small
+    # component scripts Astro inlines (their hashes change with every build).
+    # Together they make this CSP a hardening layer, not an XSS barrier.
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; font-src 'self' data:; connect-src 'self' https:; manifest-src 'self'; worker-src 'self' blob:; frame-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
 
     # --- `msg` command: email relay (server/msg-server.ts, see msg-relay.service)
     # X-Real-IP comes from $remote_addr, so the relay's per-IP limits can't be
     # bypassed with a forged X-Forwarded-For.
+    # Behind a CDN / reverse proxy, $remote_addr is the proxy's address and every
+    # visitor would share the same limits: restore the client address first, at
+    # http or server level, e.g. for Cloudflare (list every range it publishes):
+    #   set_real_ip_from 173.245.48.0/20;   # … one line per CDN range
+    #   real_ip_header   CF-Connecting-IP;
     location = /api/msg {
         limit_except POST { deny all; }
         client_max_body_size 4k;

@@ -79,7 +79,9 @@ js: |
       }
       return stored.filter(
         (task) =>
-          task && typeof task.id === 'number' && typeof task.text === 'string' &&
+          task &&
+          typeof task.id === 'number' &&
+          typeof task.text === 'string' &&
           STATUSES.includes(task.status),
       );
     } catch {
@@ -110,7 +112,9 @@ js: |
   };
 
   // ---- sub-commands ----
-  const [sub = 'ls', ...rest] = ctx.args;
+  // `todo --all` (no sub-command) is `todo ls --all`, as the synopsis says.
+  const listsByDefault = !ctx.args.length || ctx.args[0] === '--all' || ctx.args[0] === '-a';
+  const [sub, ...rest] = listsByDefault ? ['ls', ...ctx.args] : ctx.args;
 
   // Parses the task id argument; prints usage and returns null when invalid.
   const parseId = () => {

@@ -13,8 +13,26 @@ export type VFile = { type: 'file'; content: string };
 export type VDir = { type: 'dir'; children: Record<string, VNode> };
 export type VNode = VFile | VDir;
 
+/**
+ * A prototype-less children map. Entry names are typed by the visitor, so a
+ * plain `{}` would resolve `constructor` or `__proto__` to members of
+ * `Object.prototype` — and writing to them would pollute every object.
+ */
+const emptyChildren = (): Record<string, VNode> => Object.create(null) as Record<string, VNode>;
+
 /** Builds a directory node. */
-export const vdir = (children: Record<string, VNode> = {}): VDir => ({ type: 'dir', children });
+export const vdir = (children: Record<string, VNode> = {}): VDir => ({
+  type: 'dir',
+  children: Object.assign(emptyChildren(), children),
+});
+
+/** Detaches every children map of a tree (e.g. one parsed from JSON) from `Object.prototype`. */
+function detachPrototypes(dir: VDir): void {
+  Object.setPrototypeOf(dir.children, null);
+  for (const child of Object.values(dir.children)) {
+    if (child.type === 'dir') detachPrototypes(child);
+  }
+}
 
 /** The result of a mutation: an error message, or whether the tree changed. */
 type MutRes = { error?: string; changed?: boolean };
@@ -120,6 +138,7 @@ function defaultStorage(): StorageLike | null {
  */
 export function createVfs(opts: VfsOptions): Vfs {
   const root = opts.root;
+  detachPrototypes(root);
   /** Absolute path of the visitor's home directory (the shell starts here). */
   const HOME = opts.home;
   /** Superuser home, reachable only after `su` (see the identity state below). */
@@ -328,7 +347,7 @@ export function createVfs(opts: VfsOptions): Vfs {
       } else {
         if (!last && !parents)
           return { error: `cannot create directory '${disp}': No such file or directory` };
-        const made: VDir = { type: 'dir', children: {} };
+        const made: VDir = vdir();
         dir.children[seg] = made;
         dir = made;
         changed = true;
@@ -385,6 +404,22 @@ export function createVfs(opts: VfsOptions): Vfs {
   }
 
   let fsJournal: FsOp[] = [];
+
+  /** The journal as currently persisted, or null when unreadable / absent. */
+  const storedJournal = (): FsOp[] | null => {
+    if (!storage) return null;
+    try {
+      const stored: unknown = JSON.parse(storage.getItem(FS_KEY) || '[]');
+      if (!Array.isArray(stored)) return null;
+      return stored.filter(
+        (o): o is FsOp =>
+          !!o && ['mkdir', 'touch', 'rm', 'write'].includes(o.op) && typeof o.path === 'string',
+      );
+    } catch {
+      return null; // corrupt journal
+    }
+  };
+
   const saveJournal = (): void => {
     if (!storage) return;
     try {
@@ -414,6 +449,9 @@ export function createVfs(opts: VfsOptions): Vfs {
             : vfsRm(abs, rawPath, !!flags.r, !!flags.f);
     if (res.error) return res.error;
     if (res.changed) {
+      // Start from the persisted journal, not this session's copy: another
+      // shell window (each has its own VFS) may have appended to it since.
+      fsJournal = storedJournal() ?? fsJournal;
       // A fresh write fully defines the file, so older writes to the same path are
       // redundant — drop them so repeated saves don't grow the journal unbounded.
       if (op === 'write')
@@ -429,25 +467,14 @@ export function createVfs(opts: VfsOptions): Vfs {
   }
 
   // Replay the persisted journal onto the base tree (rm is forced & idempotent).
-  if (storage) {
-    try {
-      const stored: unknown = JSON.parse(storage.getItem(FS_KEY) || '[]');
-      if (Array.isArray(stored)) {
-        fsJournal = stored.filter(
-          (o): o is FsOp =>
-            !!o && ['mkdir', 'touch', 'rm', 'write'].includes(o.op) && typeof o.path === 'string',
-        );
-        for (const o of fsJournal) {
-          if (o.op === 'mkdir') vfsMkdir(o.path, o.path, !!o.p);
-          else if (o.op === 'touch') vfsTouch(o.path, o.path);
-          else if (o.op === 'write')
-            vfsWrite(o.path, o.path, typeof o.content === 'string' ? o.content : '');
-          else vfsRm(o.path, o.path, !!o.r, true);
-        }
-      }
-    } catch {
-      /* corrupt journal — start from the clean base tree */
-    }
+  // A corrupt journal is ignored: the shell starts from the clean base tree.
+  fsJournal = storedJournal() ?? [];
+  for (const o of fsJournal) {
+    if (o.op === 'mkdir') vfsMkdir(o.path, o.path, !!o.p);
+    else if (o.op === 'touch') vfsTouch(o.path, o.path);
+    else if (o.op === 'write')
+      vfsWrite(o.path, o.path, typeof o.content === 'string' ? o.content : '');
+    else vfsRm(o.path, o.path, !!o.r, true);
   }
 
   return {

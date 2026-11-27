@@ -50,38 +50,50 @@ man: |
   uuid, sha256sum, hashcat, qr
 js: |
   const args = ctx.args.slice();
+  const MIN_LENGTH = 8;
+  const MAX_LENGTH = 128;
+  const MAX_COUNT = 20;
   let length = 20;
   let count = 1;
   let symbols = true;
   let copy = false;
   for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '-n') count = parseInt(args[++i], 10);
-    else if (a === '--no-symbols') symbols = false;
-    else if (a === '-c' || a === '--copy') copy = true;
-    else if (/^\d+$/.test(a)) length = parseInt(a, 10);
-    else { ctx.error(`password: unknown option ${a} — see man password`); return; }
+    const arg = args[i];
+    // `-n` consumes the next argument as its value; a bare number is the length.
+    if (arg === '-n') count = parseInt(args[++i], 10);
+    else if (arg === '--no-symbols') symbols = false;
+    else if (arg === '-c' || arg === '--copy') copy = true;
+    else if (/^\d+$/.test(arg)) length = parseInt(arg, 10);
+    else {
+      ctx.error(`password: unknown option ${arg} — see man password`);
+      return;
+    }
   }
-  if (!(length >= 8 && length <= 128)) { ctx.error('password: length must be between 8 and 128'); return; }
-  if (!(count >= 1 && count <= 20)) { ctx.error('password: -n must be between 1 and 20'); return; }
+  // Written as negated ranges so that NaN (`-n` without a number) is rejected too.
+  if (!(length >= MIN_LENGTH && length <= MAX_LENGTH)) {
+    ctx.error('password: length must be between 8 and 128');
+    return;
+  }
+  if (!(count >= 1 && count <= MAX_COUNT)) {
+    ctx.error('password: -n must be between 1 and 20');
+    return;
+  }
 
   // Look-alikes (0 O 1 l I) are excluded to keep passwords easy to retype.
-  const classes = [
-    'abcdefghijkmnopqrstuvwxyz',
-    'ABCDEFGHJKLMNPQRSTUVWXYZ',
-    '23456789',
-  ];
+  const classes = ['abcdefghijkmnopqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789'];
   if (symbols) classes.push('!#$%&*+-=?@^_~.:;');
   const alphabet = classes.join('');
 
   // Uniform integer in [0, n) — rejection sampling avoids the modulo bias of
   // `random % n` (values past the largest multiple of n are redrawn).
-  const buf = new Uint32Array(1);
+  const UINT32_RANGE = 0x100000000; // 2^32 possible values per draw
+  const randomWord = new Uint32Array(1);
   const randomInt = (n) => {
-    const limit = Math.floor(0x100000000 / n) * n;
-    let x;
-    do x = crypto.getRandomValues(buf)[0]; while (x >= limit);
-    return x % n;
+    const limit = Math.floor(UINT32_RANGE / n) * n;
+    let value;
+    do value = crypto.getRandomValues(randomWord)[0];
+    while (value >= limit);
+    return value % n;
   };
   const pick = (set) => set[randomInt(set.length)];
 
@@ -102,8 +114,11 @@ js: |
     last = generate();
     ctx.raw(last);
   }
+  // Entropy of a random string: length × log2(alphabet size).
   const bits = Math.floor(length * Math.log2(alphabet.length));
-  const grade = bits >= 128 ? 'excellent' : bits >= 80 ? 'strong' : 'fair';
+  let grade = 'fair';
+  if (bits >= 128) grade = 'excellent';
+  else if (bits >= 80) grade = 'strong';
   ctx.sysLine(`≈ ${bits} bits of entropy (${grade}) · ${alphabet.length}-char alphabet`);
 
   if (copy) {

@@ -8,6 +8,15 @@ describe('escapeHtml', () => {
 });
 
 describe('inline', () => {
+  it('leaves a link target alone when it contains emphasis or code markers', () => {
+    expect(inline('[t](https://a.b/**) and **bold**')).toBe(
+      '<a href="https://a.b/**" target="_blank" rel="noopener" class="tlink">t</a> and <strong class="cmd">bold</strong>',
+    );
+    expect(inline('[d](https://a.b/`x`)')).toBe(
+      '<a href="https://a.b/`x`" target="_blank" rel="noopener" class="tlink">d</a>',
+    );
+  });
+
   it('renders an external link in a new tab', () => {
     expect(inline('[geeek](https://geeek.org)')).toBe(
       '<a href="https://geeek.org" target="_blank" rel="noopener" class="tlink">geeek</a>',

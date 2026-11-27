@@ -15,8 +15,22 @@
  * Capped well under the CRT overlay (`.fx-overlay`, z 9999) and the page chrome,
  * so windows always stay below them however many times one is clicked.
  */
-let topZ = 40;
-export const raiseZ = (): number => (topZ = Math.min(topZ + 1, 900));
+const BASE_Z = 40;
+const MAX_Z = 900;
+let topZ = BASE_Z;
+export const raiseZ = (): number => {
+  if (topZ >= MAX_Z) {
+    // Out of headroom: renumber the open windows from the bottom, keeping
+    // their stacking order — otherwise every window would end up sharing the
+    // cap and clicking one would no longer bring it to the front.
+    const open = [...document.querySelectorAll<HTMLElement>('.ssh-win')].sort(
+      (a, b) => Number(a.style.zIndex || 0) - Number(b.style.zIndex || 0),
+    );
+    topZ = BASE_Z;
+    for (const win of open) win.style.zIndex = String(++topZ);
+  }
+  return ++topZ;
+};
 
 /** How many windows have been spawned — used to cascade their position. */
 let spawnCount = 0;

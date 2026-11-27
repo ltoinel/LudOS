@@ -41,14 +41,20 @@ man: |
   ## SEE ALSO
   password, sha256sum, jwt
 js: |
-  const n = Math.min(Math.max(parseInt(ctx.args[0], 10) || 1, 1), 64);
-  // Prefer the native generator; fall back to a getRandomValues-based v4.
-  const gen = () =>
+  const MAX_COUNT = 64;
+  const count = Math.min(Math.max(parseInt(ctx.args[0], 10) || 1, 1), MAX_COUNT);
+  // Prefer the native generator (secure contexts only); fall back to a
+  // getRandomValues-based v4. In the template, `x` is a random hex digit, `4`
+  // the version, and `y` the variant digit: its two high bits are forced to
+  // 10, which leaves 8, 9, a or b.
+  const UUID_V4_TEMPLATE = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+  const generateUuid = () =>
     crypto.randomUUID
       ? crypto.randomUUID()
-      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-          const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
-          return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      : UUID_V4_TEMPLATE.replace(/[xy]/g, (placeholder) => {
+          const nibble = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+          const digit = placeholder === 'x' ? nibble : (nibble & 0x3) | 0x8;
+          return digit.toString(16);
         });
-  for (let i = 0; i < n; i++) ctx.line(gen());
+  for (let i = 0; i < count; i++) ctx.line(generateUuid());
 ---

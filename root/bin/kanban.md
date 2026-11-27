@@ -41,14 +41,24 @@ man: |
   todo, pomodoro
 js: |
   const E = ctx.escape;
-  const W = Math.min(60, Math.max(14, parseInt(ctx.args[0], 10) || 26));
+  // Column width in characters (optional first argument), kept within what a
+  // card and a terminal can reasonably hold.
+  const DEFAULT_COLUMN_WIDTH = 26;
+  const MIN_COLUMN_WIDTH = 14;
+  const MAX_COLUMN_WIDTH = 60;
+  const requestedWidth = parseInt(ctx.args[0], 10) || DEFAULT_COLUMN_WIDTH;
+  const columnWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, requestedWidth));
+  // A cell keeps one space of padding on each side of its text.
+  const textWidth = columnWidth - 2;
   // Reads the task list kept by the todo command (same localStorage key and
   // format); unreadable data just shows an empty board.
   const readTasks = () => {
     try {
       const stored = JSON.parse(localStorage.getItem('ltsh.todo') || '[]');
       return Array.isArray(stored)
-        ? stored.filter((task) => task && typeof task.id === 'number' && typeof task.text === 'string')
+        ? stored.filter(
+            (task) => task && typeof task.id === 'number' && typeof task.text === 'string',
+          )
         : [];
     } catch {
       return [];
@@ -66,69 +76,77 @@ js: |
     { key: 'done', title: 'DONE', color: 'var(--dim)' },
   ];
 
-  // Word-wraps `text` to lines of at most `w` chars (hard-splits long words).
-  const wrap = (text, w) => {
-    const out = [];
-    let cur = '';
+  // Word-wraps `text` to lines of at most `width` chars (hard-splits long words).
+  const wrap = (text, width) => {
+    const wrapped = [];
+    let current = ''; // the line being filled
     for (let word of text.split(' ')) {
       // Hard-split words longer than a whole line.
-      while (word.length > w) {
-        if (cur) {
-          out.push(cur);
-          cur = '';
+      while (word.length > width) {
+        if (current) {
+          wrapped.push(current);
+          current = '';
         }
-        out.push(word.slice(0, w));
-        word = word.slice(w);
+        wrapped.push(word.slice(0, width));
+        word = word.slice(width);
       }
-      if (!cur) {
-        cur = word;
-      } else if ((cur + ' ' + word).length <= w) {
-        cur += ' ' + word;
+      if (!current) {
+        current = word;
+      } else if ((current + ' ' + word).length <= width) {
+        current += ' ' + word;
       } else {
-        out.push(cur);
-        cur = word;
+        wrapped.push(current);
+        current = word;
       }
     }
-    if (cur) out.push(cur);
-    return out;
+    if (current) wrapped.push(current);
+    return wrapped;
   };
 
   // Each column becomes a list of plain-text rows, cards separated by a blank
   // row (a row is [text, isFirstLineOfCard]).
-  const cols = COLUMNS.map((c) => {
+  const columnRows = COLUMNS.map((column) => {
     const rows = [];
-    for (const t of tasks.filter((x) => x.status === c.key)) {
-      const prefix = `#${t.id} `;
-      wrap(t.text, W - 2 - prefix.length).forEach((l, i) =>
-        rows.push([(i === 0 ? prefix : ' '.repeat(prefix.length)) + l, i === 0]),
-      );
+    for (const task of tasks.filter((candidate) => candidate.status === column.key)) {
+      // The id prefixes the card's first line; the next ones align under the text.
+      const prefix = `#${task.id} `;
+      const hangingIndent = ' '.repeat(prefix.length);
+      wrap(task.text, textWidth - prefix.length).forEach((line, lineIndex) => {
+        const isFirstLine = lineIndex === 0;
+        rows.push([(isFirstLine ? prefix : hangingIndent) + line, isFirstLine]);
+      });
       rows.push(['', false]);
     }
+    // Drop the separator after the last card; an empty column shows a dash.
     if (rows.length) rows.pop();
     else rows.push(['—', false]);
     return rows;
   });
-  const height = Math.max(...cols.map((r) => r.length));
+  const boardHeight = Math.max(...columnRows.map((rows) => rows.length));
 
-  const B = (s) => `<span class="comment">${s}</span>`;
-  const hr = (l, m, r) => B(l + COLUMNS.map(() => '─'.repeat(W)).join(m) + r);
-  const cell = (text, color) => ` <span style="color:${color}">${E(text.padEnd(W - 2))}</span> `;
+  // ---- drawing (box characters are dimmed, like comments) ----
+  const border = (chars) => `<span class="comment">${chars}</span>`;
+  const horizontalRule = (left, junction, right) =>
+    border(left + COLUMNS.map(() => '─'.repeat(columnWidth)).join(junction) + right);
+  const cell = (text, color) => ` <span style="color:${color}">${E(text.padEnd(textWidth))}</span> `;
+  const boxedRow = (cells) => border('│') + cells.join(border('│')) + border('│');
 
-  const lines = [hr('┌', '┬', '┐')];
-  lines.push(
-    B('│') +
-      COLUMNS.map((c) => {
-        const n = tasks.filter((t) => t.status === c.key).length;
-        return `<span class="accent text-glow">${E(` ${c.title} (${n})`.padEnd(W))}</span>`;
-      }).join(B('│')) +
-      B('│'),
-  );
-  lines.push(hr('├', '┼', '┤'));
-  for (let r = 0; r < height; r++) {
-    lines.push(
-      B('│') + COLUMNS.map((c, i) => cell((cols[i][r] || [''])[0], c.color)).join(B('│')) + B('│'),
-    );
+  const lines = [horizontalRule('┌', '┬', '┐')];
+  const headers = COLUMNS.map((column) => {
+    const cardCount = tasks.filter((task) => task.status === column.key).length;
+    const heading = ` ${column.title} (${cardCount})`.padEnd(columnWidth);
+    return `<span class="accent text-glow">${E(heading)}</span>`;
+  });
+  lines.push(boxedRow(headers));
+  lines.push(horizontalRule('├', '┼', '┤'));
+  for (let rowIndex = 0; rowIndex < boardHeight; rowIndex++) {
+    const cells = COLUMNS.map((column, columnIndex) => {
+      // A column shorter than the board is padded with empty cells.
+      const row = columnRows[columnIndex][rowIndex] || [''];
+      return cell(row[0], column.color);
+    });
+    lines.push(boxedRow(cells));
   }
-  lines.push(hr('└', '┴', '┘'));
+  lines.push(horizontalRule('└', '┴', '┘'));
   ctx.append(`<div class="ln ascii-art">${lines.join('\n')}</div>`);
 ---

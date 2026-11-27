@@ -38,7 +38,11 @@ js: |
   else {
     // Toggle: muted only when explicitly stored as 'off' (default is on).
     let muted = false;
-    try { muted = localStorage.getItem('ltsh.bell') === 'off'; } catch { /* ignore */ }
+    try {
+      muted = localStorage.getItem('ltsh.bell') === 'off';
+    } catch {
+      /* ignore */
+    }
     on = muted; // currently muted → turn on, and vice-versa
   }
   try {

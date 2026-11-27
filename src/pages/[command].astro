@@ -13,11 +13,11 @@ import {
 } from '../lib/content';
 import { site, siteHost } from '../site.config.ts';
 
-// One static page per deep-linkable command / document. Opening the URL boots
-// the terminal, which then runs `man <command>` (see terminal.ts). The terminal
-// renders client-side, so we also emit the command's manual as server-rendered,
-// crawlable HTML (visually hidden) — otherwise the page's only real content is a
-// JSON blob, invisible to engines that don't run JS.
+// One static page per deep-linkable command / document. The command's manual
+// (or the document) is rendered at build time straight into the terminal
+// window, as if `man <command>` had just been typed: it is visible on first
+// paint and is the page's real content for search engines. On boot the shell
+// keeps it, then runs the command's `demo` line below it (see terminal.ts).
 export function getStaticPaths() {
   const manByName = new Map(commandDefs.map((c) => [c.name, c.man || '']));
   // Only command names with their own page can be linked from "SEE ALSO".
@@ -34,6 +34,8 @@ export function getStaticPaths() {
         seoTitle: r.seoTitle,
         desc: r.desc,
         manHtml,
+        // What the pre-rendered terminal shows as the typed command line.
+        typed: man ? `man ${r.slug}` : r.slug,
         manDesc: man ? manMetaDescription(man) : '',
         dateModified: lastmod(r.slug),
         noindex: Boolean(r.noindex),
@@ -49,8 +51,10 @@ interface Props {
   seoTitle?: string;
   /** Command / document description — the route desc. */
   desc: string;
-  /** Server-rendered manual HTML (empty for documents, which have no man page). */
+  /** Server-rendered manual (or document) HTML shown in the terminal window. */
   manHtml: string;
+  /** The command line that content stands for (`man cal`, `about`). */
+  typed: string;
   /** Meta description taken from the man DESCRIPTION section (empty if none). */
   manDesc: string;
   /** Source file's last-modified date (YYYY-MM-DD), or null. */
@@ -58,7 +62,7 @@ interface Props {
   /** Thin page kept out of search engines (`index: false`). */
   noindex: boolean;
 }
-const { label, seoTitle, desc, manHtml, manDesc, dateModified, noindex } = Astro.props;
+const { label, seoTitle, desc, manHtml, typed, manDesc, dateModified, noindex } = Astro.props;
 
 // <title> seeds from the route title. The meta description prefers the richer
 // man DESCRIPTION; otherwise the short route desc plus a context suffix (kept
@@ -90,13 +94,10 @@ const description = manDesc || fallback;
     <span aria-current="page">{label}</span>
   </nav>
 
-  <Terminal />
+  <Terminal prerender={manHtml ? { command: typed, html: manHtml } : undefined} />
 
   <Dock />
   <LlmWidget />
-
-  {/* Crawlable mirror of the manual the terminal renders on load. */}
-  {manHtml && <article class="sr-only" set:html={manHtml} />}
 </Layout>
 
 <style>

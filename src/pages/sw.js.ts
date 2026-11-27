@@ -77,6 +77,8 @@ self.addEventListener('fetch', (event) => {
             return res;
           })
           .catch(() => cached);
+        // Keep the worker alive until the background refresh has been stored.
+        event.waitUntil(fresh);
         return cached || fresh;
       }),
     ),

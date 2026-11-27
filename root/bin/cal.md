@@ -47,25 +47,57 @@ man: |
   date, pomodoro, todo, bc
 js: |
   const E = ctx.escape;
-  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-    'August', 'September', 'October', 'November', 'December'];
+  const MONTHS = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
   const WIDTH = 23; // "Wk " + 7 × "dd " minus the trailing space
   const today = new Date();
   const isToday = (y, m, d) =>
     y === today.getFullYear() && m === today.getMonth() && d === today.getDate();
 
-  // ISO 8601 week number of a date.
-  const isoWeek = (y, m, d) => {
-    const t = new Date(Date.UTC(y, m, d));
-    const day = t.getUTCDay() || 7;
-    t.setUTCDate(t.getUTCDate() + 4 - day);
-    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-    return Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  // The Date constructor and Date.UTC map the years 0–99 to 1900–1999;
+  // setFullYear takes the year literally (and still normalizes an overflowing
+  // month or day), so every date is built through these two helpers.
+  const localDate = (y, m, d) => {
+    const date = new Date(2000, 0, 1);
+    date.setFullYear(y, m, d);
+    return date;
+  };
+  const utcDate = (y, m, d) => {
+    const date = new Date(Date.UTC(2000, 0, 1));
+    date.setUTCFullYear(y, m, d);
+    return date;
   };
 
-  const center = (s, w) => {
-    const left = Math.floor((w - s.length) / 2);
-    return ' '.repeat(Math.max(0, left)) + s + ' '.repeat(Math.max(0, w - s.length - left));
+  // ISO 8601 week number of a date.
+  const MS_PER_DAY = 86400000;
+  const isoWeek = (y, m, d) => {
+    // A week belongs to the year that holds its Thursday: move to the Thursday
+    // of this date's week (Monday = 1 … Sunday = 7), then count the weeks
+    // since that year's January 1st.
+    const thursday = utcDate(y, m, d);
+    const isoWeekday = thursday.getUTCDay() || 7;
+    thursday.setUTCDate(thursday.getUTCDate() + 4 - isoWeekday);
+    const yearStart = utcDate(thursday.getUTCFullYear(), 0, 1);
+    const dayOfYear = (thursday - yearStart) / MS_PER_DAY + 1;
+    return Math.ceil(dayOfYear / 7);
+  };
+
+  const center = (text, width) => {
+    const left = Math.floor((width - text.length) / 2);
+    const right = width - text.length - left;
+    return ' '.repeat(Math.max(0, left)) + text + ' '.repeat(Math.max(0, right));
   };
 
   // A month as an array of lines, each exactly WIDTH visible chars. Lines are
@@ -76,41 +108,52 @@ js: |
       `<span class="accent text-glow">${E(center(title, WIDTH))}</span>`,
       `<span class="comment">Wk Mo Tu We Th Fr Sa Su</span>`,
     ];
-    const first = (new Date(y, m, 1).getDay() + 6) % 7; // Monday = 0
-    const days = new Date(y, m + 1, 0).getDate();
-    let cells = Array(first).fill('  ');
-    let weekStart = 1;
-    const flush = () => {
-      while (cells.length < 7) cells.push('  ');
-      const wk = String(isoWeek(y, m, weekStart)).padStart(2, ' ');
-      lines.push(`<span class="comment">${wk}</span> ${cells.join(' ')}`);
+    // Weekday column of the 1st (Monday = 0): that many blank cells lead the month.
+    const firstWeekday = (localDate(y, m, 1).getDay() + 6) % 7;
+    // Day 0 of the next month is the last day of this one.
+    const daysInMonth = localDate(y, m + 1, 0).getDate();
+    const BLANK_CELL = '  ';
+    let cells = Array(firstWeekday).fill(BLANK_CELL);
+    let weekStart = 1; // day of the month that opens the week being filled
+    // Emits the current week as one line, prefixed with its ISO week number.
+    const flushWeek = () => {
+      while (cells.length < 7) cells.push(BLANK_CELL);
+      const weekNumber = String(isoWeek(y, m, weekStart)).padStart(2, ' ');
+      lines.push(`<span class="comment">${weekNumber}</span> ${cells.join(' ')}`);
       cells = [];
     };
-    for (let d = 1; d <= days; d++) {
+    for (let d = 1; d <= daysInMonth; d++) {
       if (cells.length === 0 && d > 1) weekStart = d;
-      const txt = String(d).padStart(2, ' ');
-      cells.push(isToday(y, m, d)
-        ? `<span style="background:var(--green);color:var(--bg);text-shadow:none">${txt}</span>`
-        : txt);
-      if (cells.length === 7) flush();
+      const dayText = String(d).padStart(2, ' ');
+      cells.push(
+        isToday(y, m, d)
+          ? `<span style="background:var(--green);color:var(--bg);text-shadow:none">${dayText}</span>`
+          : dayText,
+      );
+      if (cells.length === 7) flushWeek();
     }
-    if (cells.length) flush();
-    while (lines.length < 8) lines.push(' '.repeat(WIDTH)); // align side-by-side blocks
+    if (cells.length) flushWeek();
+    // Title + weekday header + up to six weeks: pad shorter months so blocks
+    // shown side by side keep the same height.
+    const BLOCK_HEIGHT = 8;
+    while (lines.length < BLOCK_HEIGHT) lines.push(' '.repeat(WIDTH));
     return lines;
   };
 
   // Several months side by side, separated by three spaces.
   const row = (blocks) => {
-    const out = [];
-    for (let i = 0; i < blocks[0].length; i++) out.push(blocks.map((b) => b[i]).join('   '));
-    return out.join('\n');
+    const merged = [];
+    for (let i = 0; i < blocks[0].length; i++) {
+      merged.push(blocks.map((block) => block[i]).join('   '));
+    }
+    return merged.join('\n');
   };
   const show = (text) => ctx.append(`<div class="ln ascii-art">${text}</div>`);
 
-  const args = ctx.args.filter((a) => a !== '-3');
+  const args = ctx.args.filter((arg) => arg !== '-3');
   const three = ctx.args.includes('-3');
-  const nums = args.map((a) => parseInt(a, 10));
-  if (args.some((a) => !/^\d+$/.test(a)) || args.length > 2) {
+  const nums = args.map((arg) => parseInt(arg, 10));
+  if (args.some((arg) => !/^\d+$/.test(arg)) || args.length > 2) {
     ctx.error('usage: cal [-3] [[month] year]');
     return;
   }
@@ -118,9 +161,19 @@ js: |
   if (args.length === 1) {
     // Whole year, three months per row.
     const y = nums[0];
-    if (y < 1 || y > 9999) { ctx.error('cal: year must be between 1 and 9999'); return; }
-    ctx.append(`<div class="ln"><span class="accent text-glow">${E(center(String(y), WIDTH * 3 + 6))}</span></div>`);
-    for (let q = 0; q < 12; q += 3) show(row([q, q + 1, q + 2].map((m) => month(y, m, false))));
+    if (y < 1 || y > 9999) {
+      ctx.error('cal: year must be between 1 and 9999');
+      return;
+    }
+    // The year is centred over the three blocks and their two 3-space gaps.
+    const yearRowWidth = WIDTH * 3 + 6;
+    ctx.append(
+      `<div class="ln"><span class="accent text-glow">${E(center(String(y), yearRowWidth))}</span></div>`,
+    );
+    for (let quarterStart = 0; quarterStart < 12; quarterStart += 3) {
+      const quarter = [quarterStart, quarterStart + 1, quarterStart + 2];
+      show(row(quarter.map((m) => month(y, m, false))));
+    }
     return;
   }
 
@@ -128,12 +181,23 @@ js: |
   let m = today.getMonth();
   if (args.length === 2) {
     [m, y] = [nums[0] - 1, nums[1]];
-    if (m < 0 || m > 11) { ctx.error('cal: month must be between 1 and 12'); return; }
-    if (y < 1 || y > 9999) { ctx.error('cal: year must be between 1 and 9999'); return; }
+    if (m < 0 || m > 11) {
+      ctx.error('cal: month must be between 1 and 12');
+      return;
+    }
+    if (y < 1 || y > 9999) {
+      ctx.error('cal: year must be between 1 and 9999');
+      return;
+    }
   }
   if (three) {
-    const at = (k) => { const d = new Date(y, m + k, 1); return month(d.getFullYear(), d.getMonth(), true); };
-    show(row([at(-1), at(0), at(1)]));
+    // Previous, current and next month; localDate normalizes a month of -1 or
+    // 12 into the neighbouring year.
+    const monthAt = (offset) => {
+      const date = localDate(y, m + offset, 1);
+      return month(date.getFullYear(), date.getMonth(), true);
+    };
+    show(row([monthAt(-1), monthAt(0), monthAt(1)]));
   } else {
     show(month(y, m, true).join('\n'));
   }
