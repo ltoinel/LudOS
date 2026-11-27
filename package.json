@@ -40,7 +40,7 @@
     "@iconify-json/lucide": "^1.2.0",
     "@mlc-ai/web-llm": "^0.2.85",
     "@tailwindcss/vite": "^4.1.0",
-    "astro": "^5.8.0",
+    "astro": "^7.4.13",
     "astro-icon": "^1.1.5",
     "tailwindcss": "^4.1.0"
   },
@@ -57,7 +57,7 @@
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.60.1",
-    "vite": "^6.4.3",
+    "vite": "^8.4.0",
     "vitest": "^4.1.8"
   }
 }
