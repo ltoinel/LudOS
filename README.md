@@ -1,6 +1,6 @@
 # LudOS
 
-[![CI](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Terminal.com/actions/workflows/ci.yml) <!-- badges:dynamic -->![Test coverage](https://img.shields.io/badge/coverage-96.2%25-brightgreen) ![Shell commands](https://img.shields.io/badge/shell%20commands-65-blueviolet)<!-- /badges:dynamic --> ![Astro 5](https://img.shields.io/badge/Astro-5-BC52EE?logo=astro&logoColor=white) ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white) ![Node ≥ 22.18](https://img.shields.io/badge/node-%E2%89%A5%2022.18-5FA04E?logo=nodedotjs&logoColor=white) ![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success) ![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00) ![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/ltoinel/LudOS/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/LudOS/actions/workflows/ci.yml) <!-- badges:dynamic -->![Test coverage](https://img.shields.io/badge/coverage-96.4%25-brightgreen) ![Shell commands](https://img.shields.io/badge/shell%20commands-99-blueviolet)<!-- /badges:dynamic --> ![Astro 7](https://img.shields.io/badge/Astro-7-BC52EE?logo=astro&logoColor=white) ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white) ![Node ≥ 22.23](https://img.shields.io/badge/node-%E2%89%A5%2022.23-5FA04E?logo=nodedotjs&logoColor=white) ![Zero JS framework](https://img.shields.io/badge/JS%20framework-none-success) ![Local AI: WebGPU](https://img.shields.io/badge/local%20AI-WebGPU-FF6F00) ![Code style: Prettier](https://img.shields.io/badge/code%20style-prettier-F7B93E?logo=prettier&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Personal portal — **[Astro](https://astro.build) + [Tailwind CSS](https://tailwindcss.com) v4**.
 Static site, **terminal / phosphor aesthetic**, zero framework JS. Config-driven and reusable: every site-specific
@@ -20,8 +20,8 @@ blinking cursor — all disabled under `prefers-reduced-motion`.
 
 ## Requirements
 
-- Node.js ≥ 22.18 — native TypeScript execution for `scripts/`, `server/` and the
-  tests (CI runs the latest Node 22).
+- Node.js ≥ 22.23.4 — native TypeScript execution for `scripts/`, `server/` and the
+  tests (CI runs the latest Node 22 and 24).
 
 ## Getting started
 
@@ -32,28 +32,28 @@ npm run dev      # dev server with HMR -> http://localhost:4321
 
 ## Scripts
 
-| Script                   | Purpose                                                  |
-| ------------------------ | -------------------------------------------------------- |
-| `npm run dev`            | Development server (hot reload)                          |
-| `npm run build`          | Optimized static build → `dist/`                         |
-| `npm run preview`        | Preview the `dist/` build                                |
-| `npm run check`          | Type checking / Astro diagnostics                        |
-| `npm run check:commands` | Validate + lint the commands (`root/bin/*.md`)           |
-| `npm test`               | Unit tests (Vitest)                                      |
-| `npm run coverage`       | Tests + coverage report, refreshes the README badges     |
-| `npm run test:ci`        | Tests + JUnit / Cobertura reports (used by Azure DevOps) |
-| `npm run test:watch`     | Tests in watch mode                                      |
-| `npm run lint`           | ESLint                                                   |
-| `npm run format`         | Format the code (Prettier)                               |
-| `npm run format:check`   | Check formatting without writing                         |
-| `npm run upgrade`        | List dependency updates                                  |
-| `npm run upgrade:apply`  | Apply updates + rebuild                                  |
+| Script                   | Purpose                                               |
+| ------------------------ | ----------------------------------------------------- |
+| `npm run dev`            | Development server (hot reload)                       |
+| `npm run build`          | Optimized static build → `dist/`                      |
+| `npm run preview`        | Preview the `dist/` build                             |
+| `npm run check`          | Type checking / Astro diagnostics                     |
+| `npm run check:commands` | Validate + lint the commands (`root/bin/*.md`)        |
+| `npm test`               | Unit tests (Vitest)                                   |
+| `npm run coverage`       | Tests + coverage report, refreshes the README badges  |
+| `npm run test:ci`        | Tests + JUnit / Cobertura reports (for CI dashboards) |
+| `npm run test:watch`     | Tests in watch mode                                   |
+| `npm run lint`           | ESLint                                                |
+| `npm run format`         | Format the code (Prettier)                            |
+| `npm run format:check`   | Check formatting without writing                      |
+| `npm run upgrade`        | List dependency updates                               |
+| `npm run upgrade:apply`  | Apply updates + rebuild                               |
 
 All of these checks (`format:check`, `lint`, `check:commands`, `check`, `test`, `build`)
-run automatically in CI on every _push_ and _pull request_ — on GitHub Actions
-(`.github/workflows/ci.yml`) and on Azure DevOps (`azure-pipelines.yml`, which also
-publishes the unit-test results and the code coverage to the run's _Tests_ and
-_Code Coverage_ tabs, via `npm run test:ci`).
+run automatically in CI on every _push_ and _pull request_ on GitHub Actions
+(`.github/workflows/ci.yml`, on every supported Node.js LTS line). The release
+workflow reuses the very same checks (`.github/workflows/checks.yml`), and
+Dependabot (`.github/dependabot.yml`) keeps the actions and npm packages current.
 
 ## Structure
 
@@ -85,7 +85,7 @@ public_html/
 │   ├── home/guest/           ← visitor's ~ : docs browsed via ls/cat (about/projects/contact)
 │   └── etc/, var/, usr/, …   ← explorable "decor" directories
 ├── server/                   ← `msg` email relay (Node, zero dependencies)
-├── public/                   ← served as-is (icons, fonts, manifest, OG image, vendor/)
+├── public/                   ← served as-is (icons, fonts, OG image)
 ├── deploy/*.template         ← nginx, systemd unit, relay env (rendered by deploy:config)
 ├── scripts/                  ← site-config bootstrap + command validation
 ├── tests/                    ← Vitest tests (parsing, execution, VFS, rendering, relay)
@@ -170,8 +170,9 @@ the content. The window is **draggable** (grab the title bar), **resizable**
 
   The `js` is an async function body receiving a **`ctx`** object — its full,
   typed contract is **`src/lib/shell-ctx.ts`**. In short:
-  - input: `args`, `body`, `cfg`, `stdin` (piped input), `history`, `commands`,
-    `signal` (aborted by Ctrl+C), `ask(question, { secret })`;
+  - input: `args`, `body`, `cfg`, `stdin` (piped input), `piped` (whether a
+    previous stage feeds the command, even with an empty `stdin`), `history`,
+    `commands`, `signal` (aborted by Ctrl+C), `ask(question, { secret })`;
   - output: `print` (markdown), `line`, `raw`, `error` (stderr), `sysLine`,
     `append` (trusted HTML), `escape`, `clear`, `sleep`, `type`;
   - filesystem: `cwd`, `cwdLabel`, `cd`, `list`, `read`, `fileList`, `resolveFile`,
@@ -180,7 +181,7 @@ the content. The window is **draggable** (grab the title bar), **resizable**
     `exit`, `close`, `exec`, `capture(line)` (run a command line headlessly and get
     its output);
   - background work: `worker(url, name)` (a Web Worker tracked by the shell, shown
-    by `top`) and `workers()`;
+    by `top` / `ps`), `workers()` and `killWorker(id)`;
   - `llm`: the local WebLLM manager (`ensure`, `chat`, `models`, `catalog`,
     `recommended`, cache ops, `unload`, `interrupt`, `state`).
 
@@ -203,24 +204,34 @@ Supported markdown: `# Title`, `## Subtitle`, `> note`, `- bullet`,
 **Built-in commands**
 
 - _Filesystem_: `ls`/`ll`, `cd`, `pwd`, `cat`, `nano`/`edit`, `tree`, `du`, `find`, `grep`, `wc`,
-  `mkdir`, `touch`, `rm` (FS mutations persist per-browser in `localStorage`).
+  `mkdir`, `touch`, `rm`, `cp`, `mv` (FS mutations persist per-browser in `localStorage`).
+- _Text filters (made for pipes)_: `head`, `tail`, `sort`, `uniq`, `cut`, `tr`, `rev`,
+  `xxd`/`hexdump`, `diff` — e.g. `history | sort | uniq -c | sort -rn | head -5`.
 - _System / identity_: `whoami`, `uname`, `date`, `echo`, `motd`, `su`/`sudo`,
   `theme`, `bell`, `clear`/`cls`, `history`, `help`, `man`, `boot`, `exit`,
-  `shutdown`/`reboot`.
+  `shutdown`/`reboot`, `env`, `which`, `alias`/`unalias` (shortcuts kept in
+  `localStorage`), `sleep`, `watch`, `yes`.
 - _Network_: `nslookup`, `whois`, `ping`, `httperf`, `httpstest`, `checkip`, `geoip`,
-  `useragent`, `weather`, `open <name>`, `iframed <url>`.
+  `useragent`, `weather`, `open <name>`, `iframed <url>`, `curl` (within what
+  CORS allows), `dig`.
 - _Tools / crypto_: `bc`/`calc`, `base64`, `sha256sum`, `md5sum`/`md5`, `jwt`,
   `uuid`, `password`/`pwgen` (unbiased `crypto.getRandomValues` generator), `qr`,
-  `hashcat` (multi-core MD5 brute-forcer using Web Workers).
+  `hashcat` (multi-core MD5 brute-forcer using Web Workers), `json` (format /
+  validate / query), `epoch`, `urlencode`/`urldecode`, `regex` (tester), `cron`
+  (explains an expression, lists the next runs), `color` (hex / rgb / hsl),
+  `lorem`.
 - _Productivity_: `todo`/`task` (task list in localStorage), `kanban`/`board`
   (the same tasks as a Unicode board), `pomodoro`/`pomo` (background focus timer
   with a chime and a flash), `cal`/`calendar` (month / year grid, ISO
   weeks).
 - _System monitor_: `top`/`htop` — live JS heap (`performance.memory`), device
-  hints, LLM engine, service worker and the Web Workers started by commands.
+  hints, LLM engine, service worker and the Web Workers started by commands;
+  `ps` lists those workers and `kill` stops one.
 - _Fun_: `fortune`/`quote` (quote or developer joke from public APIs, offline
   fallback), `say`/`tts` (speech synthesis), `asciiart`/`banner` (big text in ten
-  styles — block, shadow, 3d, slant, …).
+  styles — block, shadow, 3d, slant, …), `sl` (a steam locomotive crosses the
+  terminal when you mistype `ls`; `-a`, `-l`, `-F`, `-e` like the original),
+  `cowsay` (try `fortune | cowsay`), `neofetch`, `cmatrix`.
 - _Local AI (WebGPU, fully in-browser)_: `llm` (engine / cache manager),
   `miaougpt`/`chat`, `glaude`/`soupe`, `denree`/`?` (a reasoning agent that
   drives the terminal: it plans, chains commands — one result feeding the next —
