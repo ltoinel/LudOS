@@ -1,6 +1,7 @@
 ---
 name: iframed
 desc: open a URL in an in-page window — e.g. iframed https://example.com
+agent: no
 seo_title: Iframe tester — can this website be embedded?
 man: |
   # IFRAMED(1)

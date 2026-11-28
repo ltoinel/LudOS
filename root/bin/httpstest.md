@@ -1,6 +1,7 @@
 ---
 name: httpstest
 desc: check a host's HTTPS security grade — e.g. httpstest toinel.com
+agent: no
 seo_title: HTTPS security test — security headers grade
 man: |
   # HTTPSTEST(1)

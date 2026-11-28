@@ -1,6 +1,7 @@
 ---
 name: cmatrix
 desc: digital rain fills the terminal — q or Ctrl+C to stop
+agent: no
 alias: matrix
 seo_title: Matrix digital rain in a browser terminal — cmatrix
 man: |

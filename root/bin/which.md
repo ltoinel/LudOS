@@ -1,6 +1,7 @@
 ---
 name: which
 desc: locate a command — e.g. which ls, which calendar
+agent: read
 page: false
 man: |
   # WHICH(1)

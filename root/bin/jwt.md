@@ -1,6 +1,7 @@
 ---
 name: jwt
 desc: decode a JSON Web Token — e.g. jwt <token>
+agent: read
 seo_title: JWT decoder — read JSON Web Token claims
 man: |
   # JWT(1)
@@ -42,7 +43,7 @@ man: |
   jwt eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0In0.xxxxx
 
   ## SEE ALSO
-  base64, sha256sum, uuid
+  base64, sha256sum, uuid, regex
 js: |
   const token = (ctx.args[0] || '').trim();
   if (!token) {

@@ -1,6 +1,7 @@
 ---
 name: neofetch
 desc: system summary next to the LudOS logo — browser, screen, GPU, theme
+agent: read
 alias: fastfetch
 demo: neofetch
 seo_title: Neofetch online — browser & system info in ASCII
@@ -44,7 +45,7 @@ man: |
   neofetch > system.txt
 
   ## SEE ALSO
-  uname, useragent, top, theme, whoami
+  uname, useragent, top, theme, whoami, cmatrix, color
 js: |
   const E = ctx.escape;
 

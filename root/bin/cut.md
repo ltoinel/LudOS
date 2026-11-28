@@ -1,6 +1,7 @@
 ---
 name: cut
 desc: extract columns or characters from each line — e.g. cut -d , -f 1,3 data.csv
+agent: read
 page: false
 man: |
   # CUT(1)

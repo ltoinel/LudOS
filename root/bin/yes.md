@@ -1,6 +1,7 @@
 ---
 name: yes
 desc: repeat a line until Ctrl+C — e.g. yes, yes maybe
+agent: no
 index: false
 man: |
   # YES(1)

@@ -1,6 +1,7 @@
 ---
 name: hashcat
 desc: brute-force an MD5 hash on every CPU core — e.g. hashcat -m 0 -a 3 <md5>
+agent: no
 seo_title: MD5 hash cracker in your browser — multi-core
 man: |
   # HASHCAT(1)

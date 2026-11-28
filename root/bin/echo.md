@@ -1,6 +1,7 @@
 ---
 name: echo
 desc: echo the text
+agent: read
 page: false
 man: |
   # ECHO(1)

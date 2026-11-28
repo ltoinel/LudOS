@@ -1,6 +1,7 @@
 ---
 name: pomodoro
 desc: focus timer with a chime — e.g. pomodoro 25, pomodoro stop
+agent: no
 alias: pomo
 seo_title: Pomodoro timer online — focus sessions with breaks
 man: |

@@ -1,6 +1,7 @@
 ---
 name: sl
 desc: a steam locomotive crosses the terminal — for when you meant ls
+agent: no
 index: false
 demo: sl
 man: |
@@ -33,7 +34,7 @@ man: |
   sl -e
 
   ## SEE ALSO
-  ls, asciiart, fortune
+  ls, asciiart, fortune, cmatrix, cowsay
 js: |
   // ---- options ---------------------------------------------------------
   const KNOWN_FLAGS = 'alFe';

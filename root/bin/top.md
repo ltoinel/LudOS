@@ -1,6 +1,7 @@
 ---
 name: top
 desc: live view of browser memory, workers and the LLM engine (q to quit)
+agent: no
 seo_title: Browser task manager — memory, workers, local LLM
 alias: htop
 demo: top -n 1

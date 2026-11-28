@@ -1,6 +1,7 @@
 ---
 name: useragent
 desc: show your browser's user agent
+agent: read
 alias: ua
 demo: useragent
 seo_title: What is my user agent? Browser & OS details

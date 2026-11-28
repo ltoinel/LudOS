@@ -1,6 +1,7 @@
 ---
 name: exit
 desc: close the session
+agent: no
 page: false
 man: |
   # EXIT(1)

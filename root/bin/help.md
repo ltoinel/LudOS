@@ -1,6 +1,7 @@
 ---
 name: help
 desc: show this help
+agent: read
 index: false
 man: |
   # HELP(1)

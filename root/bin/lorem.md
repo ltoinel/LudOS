@@ -1,6 +1,7 @@
 ---
 name: lorem
 desc: generate lorem ipsum placeholder text — e.g. lorem, lorem 3 paragraphs, lorem 20 words
+agent: read
 alias: ipsum
 demo: lorem -s 2 paragraphs
 seo_title: Lorem ipsum generator — placeholder text

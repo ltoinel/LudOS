@@ -1,6 +1,7 @@
 ---
 name: clear
 desc: clear the screen
+agent: no
 alias: cls
 page: false
 man: |

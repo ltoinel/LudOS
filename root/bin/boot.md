@@ -1,6 +1,7 @@
 ---
 name: boot
 desc: replay the SSH connection
+agent: no
 page: false
 man: |
   # BOOT(1)

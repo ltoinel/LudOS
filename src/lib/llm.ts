@@ -558,3 +558,113 @@ export function interruptLlm(): void {
     /* ignore */
   }
 }
+
+/* ------------------------- context-window fitting ------------------------ */
+
+/** A generation whose prompt is built to fit the model's context window. */
+export interface FitRequest {
+  /**
+   * Builds the messages within `budget` characters (all contents added up).
+   * Called again with a tighter budget if the engine reports an overflow.
+   */
+  build: (budget: number) => { role: string; content: string }[];
+  /** JSON Schema ⇒ grammar-constrained JSON output. */
+  schema?: object;
+  temperature?: number;
+  /** Wanted cap on generated tokens (never more than `answerShare` of the window). */
+  maxTokens?: number;
+  /**
+   * Largest part of the context window the answer may take (default a quarter,
+   * between 0.1 and 0.75). A caller whose answer is the bulk of the exchange —
+   * a whole generated page — asks for more, leaving less to the prompt.
+   */
+  answerShare?: number;
+  signal?: AbortSignal;
+  /** Streams the answer: called with each delta and the text so far. */
+  onToken?: (delta: string, full: string) => void;
+}
+
+/** What `createFitter` needs from the engine — injectable, so it can be tested. */
+export interface FitterDeps {
+  chat: (req: ChatRequest) => Promise<ChatResult>;
+  /** The loaded model's context window in tokens, null if unknown. */
+  contextWindow: () => number | null;
+  /** Identifies the loaded model: the estimate below restarts when it changes. */
+  modelKey?: () => string | null;
+}
+
+/** Context window assumed when the engine does not report one (the common build). */
+const DEFAULT_CONTEXT_WINDOW = 4096;
+/** Part of the window an answer may take unless the caller says otherwise. */
+const DEFAULT_ANSWER_SHARE = 0.25;
+/** Tokens set aside for the chat template (role markers) plus a margin. */
+const TEMPLATE_TOKENS = 64;
+/** Characters per token: a cautious first guess, then measured on every call. */
+const FIRST_CHARS_PER_TOKEN = 3.2;
+// Dense scripts (Chinese, Japanese…) and symbol-heavy text go below one
+// character per token: the floor only guards against a nonsensical measure.
+const MIN_CHARS_PER_TOKEN = 0.5;
+const MAX_CHARS_PER_TOKEN = 5;
+
+/**
+ * Creates a `fit` function: a chat call whose prompt is sized from the context
+ * window, which the prompt and the answer share. The engine exposes no
+ * tokenizer, so the budget is expressed in characters, converted with an
+ * estimate that follows the token counts each call reports — and corrected
+ * from the exact count when a prompt overflows anyway (retried once).
+ */
+export function createFitter(deps: FitterDeps): (req: FitRequest) => Promise<ChatResult> {
+  let charsPerToken = FIRST_CHARS_PER_TOKEN;
+  let estimatedFor: string | null = null;
+
+  return async (req) => {
+    const model = deps.modelKey?.() ?? null;
+    if (model !== estimatedFor) {
+      // Another model, another tokenizer: forget what was measured.
+      charsPerToken = FIRST_CHARS_PER_TOKEN;
+      estimatedFor = model;
+    }
+    const window = deps.contextWindow() || DEFAULT_CONTEXT_WINDOW;
+    const share = Math.min(0.75, Math.max(0.1, req.answerShare ?? DEFAULT_ANSWER_SHARE));
+    const cap = Math.max(48, Math.min(req.maxTokens ?? 256, Math.floor(window * share)));
+
+    for (let attempt = 0; ; attempt++) {
+      const budget = Math.floor((window - cap - TEMPLATE_TOKENS) * charsPerToken);
+      const messages = req.build(budget);
+      const chars = messages.reduce((sum, message) => sum + message.content.length, 0);
+      let result: ChatResult;
+      try {
+        result = await deps.chat({
+          messages,
+          schema: req.schema,
+          temperature: req.temperature,
+          maxTokens: cap,
+          stream: Boolean(req.onToken),
+          onToken: req.onToken,
+          signal: req.signal,
+        });
+      } catch (e) {
+        // "Prompt tokens exceed context window size: number of prompt tokens: N"
+        const overflow = String((e as Error)?.message ?? e).match(/prompt tokens: (\d+)/);
+        if (!overflow || attempt > 0) throw e;
+        charsPerToken = Math.max(MIN_CHARS_PER_TOKEN, (chars / Number(overflow[1])) * 0.9);
+        continue;
+      }
+      const promptTokens = result.usage?.promptTokens;
+      if (promptTokens) {
+        const measured = chars / promptTokens;
+        // Follow a denser text at once, a lighter one halfway.
+        const next = measured < charsPerToken ? measured : (charsPerToken + measured) / 2;
+        charsPerToken = Math.min(MAX_CHARS_PER_TOKEN, Math.max(MIN_CHARS_PER_TOKEN, next));
+      }
+      return result;
+    }
+  };
+}
+
+/** The shell's fitter, bound to the resident engine (`ctx.llm.fit`). */
+export const llmFit = createFitter({
+  chat: llmChat,
+  contextWindow: () => slot.contextWindow,
+  modelKey: () => slot.modelId,
+});

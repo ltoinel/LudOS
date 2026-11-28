@@ -1,6 +1,7 @@
 ---
 name: history
 desc: previous commands
+agent: no
 page: false
 man: |
   # HISTORY(1)

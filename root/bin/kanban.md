@@ -1,6 +1,7 @@
 ---
 name: kanban
 desc: show the todo tasks as a kanban board
+agent: read
 alias: board
 seo_title: Kanban board in your terminal — todo, doing, done
 man: |

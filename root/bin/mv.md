@@ -1,6 +1,7 @@
 ---
 name: mv
 desc: move or rename files and directories — e.g. mv draft.txt notes.txt, mv notes.txt docs
+agent: no
 page: false
 man: |
   # MV(1)

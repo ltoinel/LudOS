@@ -1,6 +1,7 @@
 ---
 name: urldecode
 desc: decode percent-encoded text — e.g. urldecode caf%C3%A9%20au%20lait
+agent: read
 page: false
 man: |
   # URLDECODE(1)

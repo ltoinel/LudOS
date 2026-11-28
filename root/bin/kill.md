@@ -1,6 +1,7 @@
 ---
 name: kill
 desc: stop a background worker — e.g. kill 2 (see ps)
+agent: no
 page: false
 man: |
   # KILL(1)

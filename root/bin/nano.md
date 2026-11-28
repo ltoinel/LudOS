@@ -1,6 +1,7 @@
 ---
 name: nano
 desc: edit a text file (a nano-like editor) — e.g. nano notes.txt
+agent: no
 alias: edit vi vim
 seo_title: Online text editor in your browser — nano-style, no signup
 man: |

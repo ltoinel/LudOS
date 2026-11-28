@@ -163,10 +163,14 @@ the content. The window is **draggable** (grab the title bar), **resizable**
   ---
   name: date
   desc: date and time
+  agent: read
   js: |
     ctx.line(new Date().toString());
   ---
   ```
+
+  `agent` is mandatory: it says whether the `denree` AI agent may run the command
+  (`read`, `network` — read-only but it contacts a third party — or `no`).
 
   The `js` is an async function body receiving a **`ctx`** object — its full,
   typed contract is **`src/lib/shell-ctx.ts`**. In short:
@@ -182,7 +186,8 @@ the content. The window is **draggable** (grab the title bar), **resizable**
     its output);
   - background work: `worker(url, name)` (a Web Worker tracked by the shell, shown
     by `top` / `ps`), `workers()` and `killWorker(id)`;
-  - `llm`: the local WebLLM manager (`ensure`, `chat`, `models`, `catalog`,
+  - `llm`: the local WebLLM manager (`ensure`, `chat`, `fit` — a chat whose
+    prompt is sized to the model's context window —, `models`, `catalog`,
     `recommended`, cache ops, `unload`, `interrupt`, `state`).
 
   > Files in `root/bin/*.md` are validated at build time and by `npm run check:commands`:

@@ -1,6 +1,7 @@
 ---
 name: urlencode
 desc: percent-encode text for a URL — e.g. urlencode "a b&c", urlencode -d a%20b
+agent: read
 demo: urlencode "name=Zoé & Léa?"
 seo_title: URL encoder / decoder — percent-encoding online
 man: |

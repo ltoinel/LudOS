@@ -1,6 +1,7 @@
 ---
 name: dl
 desc: download the current directory as a .zip — e.g. dl, dl /etc
+agent: no
 alias: download
 page: false
 man: |

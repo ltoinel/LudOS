@@ -1,6 +1,7 @@
 ---
 name: curl
 desc: fetch a URL from your browser — e.g. curl -I example.com
+agent: no
 demo: curl -I %URL%
 seo_title: curl online — fetch a URL & headers in your browser
 man: |

@@ -1,6 +1,7 @@
 ---
 name: nslookup
 desc: DNS lookup — e.g. nslookup toinel.com
+agent: network
 demo: nslookup %HOST%
 seo_title: DNS lookup online — A, AAAA, MX, TXT, NS records
 man: |

@@ -1,6 +1,7 @@
 ---
 name: checkip
 desc: show your public IP address
+agent: network
 demo: checkip
 seo_title: What is my IP address? Public IP & location
 man: |
@@ -39,7 +40,7 @@ man: |
   checkip
 
   ## SEE ALSO
-  geoip, nslookup, whois, ping, useragent, httpstest
+  geoip, nslookup, whois, ping, useragent, httpstest, weather
 js: |
   const E = ctx.escape;
   // One `Label: value` line, labels aligned in an 8-character column.

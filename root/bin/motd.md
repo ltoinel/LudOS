@@ -1,6 +1,7 @@
 ---
 name: motd
 desc: message of the day (welcome banner)
+agent: network
 index: false
 man: |
   # MOTD(1)

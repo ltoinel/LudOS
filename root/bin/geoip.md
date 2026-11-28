@@ -1,6 +1,7 @@
 ---
 name: geoip
 desc: locate an IP address or hostname — e.g. geoip 8.8.8.8, geoip github.com
+agent: network
 demo: geoip 8.8.8.8
 seo_title: IP geolocation lookup — country, city, ISP & ASN
 man: |
@@ -45,7 +46,7 @@ man: |
   geoip github.com
 
   ## SEE ALSO
-  checkip, nslookup, whois, ping
+  checkip, nslookup, whois, ping, weather
 js: |
   const E = ctx.escape;
   const row = (key, value) =>

@@ -1,6 +1,7 @@
 ---
 name: rev
 desc: reverse each line, character by character — e.g. echo hello | rev
+agent: read
 page: false
 man: |
   # REV(1)

@@ -1,6 +1,7 @@
 ---
 name: uuid
 desc: generate a random UUID (v4) — e.g. uuid 5
+agent: read
 demo: uuid 5
 seo_title: UUID v4 generator — random UUIDs online
 man: |
@@ -39,7 +40,7 @@ man: |
   uuid 5
 
   ## SEE ALSO
-  password, sha256sum, jwt
+  password, sha256sum, jwt, lorem
 js: |
   const MAX_COUNT = 64;
   const count = Math.min(Math.max(parseInt(ctx.args[0], 10) || 1, 1), MAX_COUNT);

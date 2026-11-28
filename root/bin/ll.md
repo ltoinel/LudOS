@@ -1,6 +1,7 @@
 ---
 name: ll
 desc: detailed list (ls -la)
+agent: read
 page: false
 man: |
   # LL(1)

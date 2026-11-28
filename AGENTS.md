@@ -133,6 +133,7 @@ Create `root/bin/<name>.md` with frontmatter:
 ---
 name: date
 desc: date and time # shown by `help` (user-facing)
+agent: read # required: what the AI agent may do — read | network | no
 alias: dt # optional, comma/space-separated
 page: false # optional: no /<name> landing page (control / needs args / side effect)
 index: false # optional: landing page kept out of search engines (thin content)
@@ -144,6 +145,10 @@ js: | # optional; omit for a static command
 ---
 ```
 
+- **`agent`** is mandatory and is the `denree` agent's allow-list: `read` for a
+  read-only, local command; `network` for a read-only one that contacts a third
+  party; `no` for anything that changes state, is interactive, endless, heavy
+  or purely visual. When in doubt, `no`.
 - **Static** command (no `js`): the markdown body is printed as-is.
 - **Dynamic** command: the `js` runs with a `ctx` helper object — its typed
   contract is `src/lib/shell-ctx.ts` (keep it and the README in sync when you

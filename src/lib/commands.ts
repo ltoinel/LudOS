@@ -7,6 +7,10 @@
  * checker reuse the exact same logic the build relies on.
  */
 
+/** How the AI agent may use a command (see `CmdDef.agent`). */
+export type AgentAccess = 'read' | 'network' | 'no';
+const AGENT_ACCESS: readonly string[] = ['read', 'network', 'no'];
+
 export interface CmdDef {
   name: string;
   desc?: string;
@@ -36,13 +40,23 @@ export interface CmdDef {
    * (e.g. "Password generator — strong, random, in your browser").
    */
   seoTitle?: string;
+  /**
+   * What the `denree` AI agent may do with the command — an allow-list, so a
+   * new command is never usable by the agent by accident:
+   *  - `read`    : read-only and local, free to use;
+   *  - `network` : read-only but it contacts a third party, used under the
+   *                agent's network safeguards;
+   *  - `no`      : never run by the agent (it changes state, is interactive,
+   *                endless, heavy or purely visual).
+   */
+  agent?: AgentAccess;
   js?: string;
   body: string;
 }
 
 /**
  * Parse a command markdown file: YAML-ish frontmatter (`name`, `desc`, an
- * optional comma/space-separated `alias` list, `page: false`, `index: false`, `demo`, `seo_title`) plus the multi-line `key: |`
+ * optional comma/space-separated `alias` list, `agent`, `page: false`, `index: false`, `demo`, `seo_title`) plus the multi-line `key: |`
  * block scalars `man` and `js`, followed by the body.
  *
  * A `key: |` block runs over the indented (and blank) lines that follow it and
@@ -80,6 +94,7 @@ export function parseCommand(raw: string): CmdDef {
       else if (kv[1] === 'index') def.index = kv[2].trim() !== 'false';
       else if (kv[1] === 'demo') def.demo = kv[2].trim();
       else if (kv[1] === 'seo_title') def.seoTitle = kv[2].trim();
+      else if (kv[1] === 'agent') def.agent = kv[2].trim() as AgentAccess;
       else if (kv[1] === 'alias') {
         const aliases = kv[2].split(/[\s,]+/).filter(Boolean);
         if (aliases.length) def.alias = aliases;
@@ -112,6 +127,11 @@ export function validateCommand(raw: string, def: CmdDef, file: string): string[
     return errors; // nothing else is trustworthy without frontmatter
   }
   if (!def.name) errors.push(`${file}: frontmatter is missing a "name" field`);
+  // Mandatory: the agent's allow-list must be an explicit choice per command.
+  if (!def.agent || !AGENT_ACCESS.includes(def.agent))
+    errors.push(
+      `${file}: "agent" must be read, network or no — what the AI agent may do with it (got "${def.agent ?? ''}")`,
+    );
   for (const key of ['page', 'index']) {
     const flag = raw.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
     if (flag && !/^(true|false)$/.test(flag[1].trim()))

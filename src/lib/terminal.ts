@@ -26,6 +26,7 @@ import { killWorker, listWorkers, spawnWorker } from './workers';
 import {
   ensureModel,
   llmChat,
+  llmFit,
   getLlmState,
   recommendedModels,
   llmModels,
@@ -37,6 +38,7 @@ import {
   interruptLlm,
   type EnsureOptions,
   type ChatRequest,
+  type FitRequest,
 } from './llm';
 
 /** Whether the user prefers reduced motion — disables animations and delays. */
@@ -532,6 +534,8 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
         desc: d.desc || '',
         alias: d.alias || [],
         man: d.man || '',
+        // Unset can only mean a stale shell-commands.json: stay on the safe side.
+        agent: d.agent || 'no',
       })),
       escape: escapeHtml,
       fileList,
@@ -604,6 +608,7 @@ export function initTerminal(win0: HTMLElement | null, allowDeepLink = true): vo
         cacheRemoveAll: () => cacheRemoveAll(),
         unload: () => unloadModel(),
         chat: (req: ChatRequest) => llmChat(req),
+        fit: (req: FitRequest) => llmFit(req),
         interrupt: () => interruptLlm(),
         // Ensures a model is loaded; prompts the user for consent (unless the
         // caller supplies its own `confirm`) and renders a download bar.

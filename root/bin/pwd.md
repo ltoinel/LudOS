@@ -1,6 +1,7 @@
 ---
 name: pwd
 desc: print working directory
+agent: read
 index: false
 man: |
   # PWD(1)

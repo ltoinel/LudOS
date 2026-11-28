@@ -1,6 +1,7 @@
 ---
 name: llm
 desc: manage the central local LLM engine (loaded model, tokens, cache, GPU)
+agent: no
 seo_title: Run LLMs in your browser — WebLLM model manager
 man: |
   # LLM(1)

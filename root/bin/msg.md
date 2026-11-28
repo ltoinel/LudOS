@@ -1,6 +1,7 @@
 ---
 name: msg
 desc: email me a message — e.g. msg hi!
+agent: no
 page: false
 man: |
   # MSG(1)

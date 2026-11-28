@@ -1,6 +1,7 @@
 ---
 name: head
 desc: show the first lines of a file — e.g. head -n 5 about.md, ls | head -3
+agent: read
 page: false
 man: |
   # HEAD(1)

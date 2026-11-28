@@ -1,6 +1,7 @@
 ---
 name: ps
 desc: list the background workers started by commands
+agent: read
 index: false
 demo: ps
 man: |

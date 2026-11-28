@@ -1,6 +1,7 @@
 ---
 name: asciiart
 desc: turn text into ASCII art — e.g. asciiart Hello, asciiart -s 3d Hi
+agent: read
 alias: banner
 demo: asciiart -s 3d Hello
 seo_title: ASCII art text generator — 10 banner styles
@@ -46,7 +47,7 @@ man: |
   date | asciiart -s small
 
   ## SEE ALSO
-  fortune, qr, echo
+  fortune, qr, echo, cowsay, cmatrix, color
 js: |
   // Self-contained: a hand-drawn 5-row pixel font rendered through several
   // styles. `X` = ink, `.` = blank; every row of a glyph has the same width.

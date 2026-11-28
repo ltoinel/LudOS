@@ -6,12 +6,14 @@
  * in sync with the README's `ctx` reference.
  * ------------------------------------------------------------------------- */
 
+import type { AgentAccess } from './commands';
 import type { CaptureResult } from './executor';
 import type {
   CatalogRecord,
   ChatRequest,
   ChatResult,
   EnsureOptions,
+  FitRequest,
   LlmState,
   Session,
 } from './llm';
@@ -48,6 +50,8 @@ export interface CommandInfo {
   desc: string;
   alias: string[];
   man: string;
+  /** What the AI agent may do with the command (`agent:` in its frontmatter). */
+  agent: AgentAccess;
 }
 
 /** The central LLM manager as exposed to commands (see `llm.ts`). */
@@ -62,6 +66,12 @@ export interface ShellLlm {
   cacheRemoveAll(): Promise<number>;
   unload(): Promise<boolean>;
   chat(req: ChatRequest): Promise<ChatResult>;
+  /**
+   * Like `chat`, for a prompt that must fit the model's context window: the
+   * messages are built from a character budget, and rebuilt once if the engine
+   * still reports an overflow.
+   */
+  fit(req: FitRequest): Promise<ChatResult>;
   interrupt(): void;
   /** Loads a model after an in-terminal consent prompt, with a progress bar. */
   ensure(opts: EnsureOptions): Promise<Session | null>;

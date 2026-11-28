@@ -1,6 +1,7 @@
 ---
 name: bc
 desc: basic calculator — e.g. bc "2 + 2 * 3", bc "sqrt(2)"
+agent: read
 alias: calc
 demo: bc "2^10 + sqrt(144) * pi"
 seo_title: Scientific calculator online — bc

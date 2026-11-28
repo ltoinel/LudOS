@@ -1,6 +1,7 @@
 ---
 name: tail
 desc: show the last lines of a file — e.g. tail -n 5 about.md, history | tail -3
+agent: read
 page: false
 man: |
   # TAIL(1)
