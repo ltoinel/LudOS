@@ -18,3 +18,14 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Types must match the oldest Node the project supports (`engines`), or
+      # code could use an API that Node 22 does not have.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # @astrojs/check 0.9 only accepts TypeScript 5 or 6: `npm ci` fails with 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # 1.x reflows markup where whitespace is significant (the terminal output).
+      - dependency-name: prettier-plugin-astro
+        update-types: ['version-update:semver-major']
