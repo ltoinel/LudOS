@@ -1,6 +1,7 @@
 ---
 name: cron
 desc: explain a cron expression and list its next runs — e.g. cron "*/15 9-17 * * MON-FRI"
+agent: read
 alias: crontab
 demo: cron "*/15 9-17 * * MON-FRI"
 seo_title: Cron expression explained — next run times
@@ -80,7 +81,7 @@ man: |
   cron @daily
 
   ## SEE ALSO
-  epoch, cal, date, pomodoro
+  epoch, cal, date, pomodoro, regex
 js: |
   // cron — explain a five-field cron expression and compute its next runs.
   const USAGE = 'usage: cron [-n <count>] "<minute> <hour> <day-of-month> <month> <day-of-week>"';

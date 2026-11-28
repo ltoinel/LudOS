@@ -1,6 +1,7 @@
 ---
 name: shutdown
 desc: power off — closes this shell window (alias: reboot)
+agent: no
 alias: reboot
 page: false
 man: |

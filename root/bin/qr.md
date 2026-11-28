@@ -1,6 +1,7 @@
 ---
 name: qr
 desc: render text or a URL as a QR code — e.g. qr https://example.com
+agent: read
 demo: qr %URL%
 seo_title: QR code generator — free, private, in your browser
 man: |
@@ -48,7 +49,7 @@ man: |
   qr WIFI:T:WPA;S:MyNetwork;P:secret;;
 
   ## SEE ALSO
-  password, base64, asciiart, open
+  password, base64, asciiart, open, color
 js: |
   // Self-contained: the QR encoder below is implemented here (no library).
   const args = ctx.args.slice();

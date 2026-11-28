@@ -1,6 +1,7 @@
 ---
 name: cowsay
 desc: a talking ASCII cow — e.g. cowsay Hello, fortune | cowsay -f owl
+agent: read
 demo: cowsay Welcome to %HOST%
 seo_title: Cowsay online — talking ASCII cow generator
 man: |
@@ -44,7 +45,7 @@ man: |
   cowsay -l
 
   ## SEE ALSO
-  fortune, asciiart, say, neofetch
+  fortune, asciiart, say, neofetch, cmatrix
 js: |
   const WRAP_COLUMNS = 40;
   const DEFAULT_EYES = 'oo';

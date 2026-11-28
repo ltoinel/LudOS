@@ -1,6 +1,7 @@
 ---
 name: cp
 desc: copy files and directories — e.g. cp about.md notes.md, cp -r docs backup
+agent: no
 page: false
 man: |
   # CP(1)

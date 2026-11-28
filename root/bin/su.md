@@ -1,6 +1,7 @@
 ---
 name: su
 desc: become the superuser (root)
+agent: no
 page: false
 man: |
   # SU(1)

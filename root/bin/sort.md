@@ -1,6 +1,7 @@
 ---
 name: sort
 desc: sort lines of text — e.g. sort -r names.txt, ls | sort -u, du | sort -rn
+agent: read
 page: false
 man: |
   # SORT(1)

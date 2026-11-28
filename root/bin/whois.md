@@ -1,6 +1,7 @@
 ---
 name: whois
 desc: domain registration lookup — e.g. whois toinel.com
+agent: network
 seo_title: Whois domain lookup (RDAP) — registrar & expiry
 man: |
   # WHOIS(1)

@@ -1,6 +1,7 @@
 ---
 name: webllmfit
 desc: which in-browser LLMs fit your machine? (à la llmfit.org)
+agent: read
 seo_title: Which LLM can my GPU run? In-browser model checker
 man: |
   # WEBLLMFIT(1)

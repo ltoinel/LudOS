@@ -1,6 +1,7 @@
 ---
 name: cal
 desc: show a calendar — e.g. cal, cal 12 2026, cal 2026, cal -3
+agent: read
 alias: calendar
 demo: cal
 seo_title: Calendar with ISO week numbers — cal
@@ -44,7 +45,7 @@ man: |
   cal -3
 
   ## SEE ALSO
-  date, pomodoro, todo, bc
+  date, pomodoro, todo, bc, weather, cron
 js: |
   const E = ctx.escape;
   const MONTHS = [

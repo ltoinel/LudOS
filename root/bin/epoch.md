@@ -1,6 +1,7 @@
 ---
 name: epoch
 desc: Unix timestamp converter — e.g. epoch, epoch 1700000000, epoch 2026-01-31T12:00:00Z
+agent: read
 alias: timestamp
 demo: epoch 1700000000
 seo_title: Unix timestamp converter — epoch to date and back

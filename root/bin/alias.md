@@ -1,6 +1,7 @@
 ---
 name: alias
 desc: define a shortcut for a command — e.g. alias la='ls -la'
+agent: no
 page: false
 man: |
   # ALIAS(1)

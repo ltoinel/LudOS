@@ -1,6 +1,7 @@
 ---
 name: whoami
 desc: who am I
+agent: read
 demo: whoami
 man: |
   # WHOAMI(1)
@@ -31,7 +32,7 @@ man: |
   whoami
 
   ## SEE ALSO
-  open, cat, uname, useragent
+  open, cat, uname, useragent, about, projects, contact
 js: |
   // Identity comes from site.config.ts, injected into the shell cfg as `profile`.
   const profile = ctx.cfg.profile;

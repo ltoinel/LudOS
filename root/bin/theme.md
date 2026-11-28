@@ -1,6 +1,7 @@
 ---
 name: theme
 desc: change the display theme — e.g. theme synthwave
+agent: no
 page: false
 man: |
   # THEME(1)

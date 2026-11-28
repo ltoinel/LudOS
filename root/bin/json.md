@@ -1,6 +1,7 @@
 ---
 name: json
 desc: format, validate and query JSON — e.g. json '{"a":[1,2]}', json -q .a[0] data.json
+agent: read
 demo: json '{"name":"LudOS","tags":["shell","astro"],"stable":true,"stars":42}'
 seo_title: JSON formatter & validator — pretty-print JSON online
 man: |
@@ -68,7 +69,7 @@ man: |
   cat data.json | json -r -q .title
 
   ## SEE ALSO
-  jwt, base64, urlencode, grep, cat
+  jwt, base64, urlencode, grep, cat, regex
 js: |
   // json — pretty-print, validate and query a JSON document, locally.
   const E = ctx.escape;

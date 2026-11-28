@@ -1,6 +1,7 @@
 ---
 name: tr
 desc: translate or delete characters of piped text — e.g. echo hello | tr a-z A-Z
+agent: read
 page: false
 man: |
   # TR(1)

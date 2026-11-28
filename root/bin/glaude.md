@@ -1,6 +1,7 @@
 ---
 name: glaude
 desc: builds hideous, flashy websites with a local LLM (WebGPU) — Claude Code style, by "le Glaude"
+agent: no
 alias: soupe
 seo_title: AI website generator — local LLM, 1997 GeoCities style
 man: |
@@ -41,6 +42,20 @@ man: |
   document. /save writes it to the project (persisted in the browser), and
   /show opens a fake browser to admire the carnage.
 
+  ## QUALITY
+  The look is ugly on purpose; the markup is not. Every generated page goes
+  through a check before it can be saved: a page cut short by the model's
+  output limit is closed properly (the commonest defect of a small model),
+  the doctype, charset, viewport and title are guaranteed, and any
+  JavaScript is removed — the preview is sandboxed, and a downloaded
+  project should not carry code nobody reviewed. Whatever was fixed is
+  listed under the answer.
+
+  Half of the model's context window is kept for writing the page; the
+  prompt holds your recent requests and the current page, so a change
+  ("make the title bigger") starts from what is there. /undo steps back
+  when a new version is worse than the last.
+
   ## OPTIONS
   --list, -l        list the recommended coding models
   --unload, --stop  free the loaded model from GPU memory
@@ -48,6 +63,7 @@ man: |
   ## CHAT COMMANDS
   /show [file]      open a fake browser on the result (default index.html)
   /save [file]      write the last generated page to the project
+  /undo             go back to the previous generated page
   /download /zip    download the whole project as a .zip archive
   /files /ls        list the project files
   /project /pwd     show the project and its path
@@ -214,16 +230,20 @@ js: |
     return name;
   };
   // Pulls the HTML page out of a model answer, from the most to the least
-  // explicit form: a ```html block, any code block holding markup, or an
-  // answer that is raw HTML. Returns '' when there is no page.
+  // explicit form: a ```html block, any code block holding markup, a block the
+  // model did not get to close, or raw HTML. Returns '' when there is no page.
   const extractHtml = (text) => {
     if (!text) return '';
     const htmlBlock = text.match(/```html\s*([\s\S]*?)```/i);
     if (htmlBlock) return htmlBlock[1].trim();
     const anyBlock = text.match(/```\s*([\s\S]*?)```/);
     if (anyBlock && /<[a-z!]/i.test(anyBlock[1])) return anyBlock[1].trim();
-    if (/<!doctype|<html|<body|<div|<h1|<marquee/i.test(text)) return text.trim();
-    return '';
+    // A block left open: the answer was cut before its closing fence.
+    const openBlock = text.match(/```(?:html)?\s*([\s\S]*)$/i);
+    if (openBlock && /<[a-z!]/i.test(openBlock[1])) return openBlock[1].trim();
+    // Raw markup, possibly after a sentence: the page starts at its first tag.
+    const firstTag = text.search(/<!doctype|<html|<body|<div|<h1|<marquee/i);
+    return firstTag >= 0 ? text.slice(firstTag).trim() : '';
   };
 
   // ---- fake browser: shows the rendered HTML in its own window ----
@@ -662,193 +682,172 @@ js: |
       '</span></div>',
   );
   ctx.line('Describe the page you want, press Enter. Then /save to write it, /show to admire it.');
-  ctx.line('Commands: /help · /show · /save · /download · /files · /reset · /exit');
+  ctx.line('Commands: /help · /show · /save · /undo · /download · /files · /reset · /exit');
   ctx.line('');
 
-  const SYSTEM = {
-    role: 'system',
-    content:
-      'You are "le Glaude" (Claude Ratinier), an old farmer from the Bourbonnais in the French film ' +
-      '*La Soupe aux Choux*, turned webmaster in the manner of Claude Code. ' +
-      "You run entirely in the user's browser through WebLLM, with no server. " +
-      'Your specialty: building DELIBERATELY HIDEOUS and ULTRA-FLASHY websites, ' +
-      'GeoCities 1997 style — eye-searing neon backgrounds, rainbow gradients, ' +
-      'Comic Sans font, scrolling <marquee> tags, blinking text (CSS animation), ' +
-      'emojis everywhere, blinking borders, clashing colours. ' +
-      'The current project is called "' +
-      projName +
-      '" and lives in ' +
-      projPath +
-      '. ' +
-      'ABSOLUTE RULE: ALWAYS answer with ONE complete, self-contained HTML document ' +
-      '(from <!doctype html> to </html>), all the CSS in a <style> tag, the whole thing in ' +
-      'a single ```html code block. No JavaScript (the preview is sandboxed). ' +
-      'Add a short rustic sentence before the block, but the code must be complete and ugly. ' +
-      'Answer in English.',
+  // The page is meant to be ugly, not broken: the look is the joke, the markup
+  // underneath has to be a valid, complete document.
+  const SYSTEM_PROMPT =
+    'You are "le Glaude" (Claude Ratinier), an old farmer from the Bourbonnais in the French film ' +
+    '*La Soupe aux Choux*, turned webmaster in the manner of Claude Code. ' +
+    "You run entirely in the user's browser through WebLLM, with no server. " +
+    'Your specialty: building DELIBERATELY HIDEOUS and ULTRA-FLASHY websites, ' +
+    'GeoCities 1997 style — eye-searing neon backgrounds, rainbow gradients, ' +
+    'Comic Sans font, scrolling <marquee> tags, blinking text (CSS animation), ' +
+    'emojis everywhere, blinking borders, clashing colours. ' +
+    `The current project is called "${projName}" and lives in ${projPath}. ` +
+    'ABSOLUTE RULE: ALWAYS answer with ONE complete, self-contained HTML document ' +
+    '(from <!doctype html> to </html>), in a single ```html code block, after one short ' +
+    'rustic sentence. The look is ugly; the code is clean: ' +
+    'valid HTML5 with <html lang>, a <head> holding <meta charset="utf-8">, a <title> ' +
+    'and ONE <style> tag with all the CSS; every tag closed and properly nested; ' +
+    'no inline style attribute when a CSS rule does the job; no JavaScript and no ' +
+    'external file (the preview is sandboxed, nothing would load). ' +
+    'Keep the page short enough to be written in full — about 80 lines: a cut ' +
+    'page is worse than a small one. When asked for a change, return the WHOLE ' +
+    'updated page, keeping everything that was not mentioned. Answer in English.';
+
+  // ---- quality gate: what the model wrote → a page worth saving ----
+
+  const byteLength = (text) => new TextEncoder().encode(text).length;
+  const countMatches = (text, pattern) => (text.match(pattern) || []).length;
+
+  // Turns the model's page into a complete, script-free HTML document, fixing
+  // what a small model commonly gets wrong, and says what it did. The most
+  // frequent defect is a page cut mid-way by the output limit: the open CSS
+  // rule is dropped and the missing closing tags are added, so the page
+  // renders instead of swallowing its own content. Returns { html, notes }.
+  const finalizePage = (rawHtml) => {
+    const notes = [];
+    let html = rawHtml.trim();
+
+    // Scripts cannot run in the sandboxed preview, and a generated page should
+    // not carry code nobody reviewed into a downloaded project.
+    const withoutScripts = html
+      .replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, '')
+      .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/(href|src)\s*=\s*(["']?)\s*javascript:[^"'\s>]*\2/gi, '$1="#"');
+    if (withoutScripts !== html) {
+      html = withoutScripts;
+      notes.push('removed JavaScript (scripts, on… handlers) — the page must work without it');
+    }
+
+    // A page cut by the output limit: close what was left open.
+    let truncated = false;
+    if (countMatches(html, /<style\b/gi) > countMatches(html, /<\/style\s*>/gi)) {
+      // Keep the CSS up to its last complete rule.
+      const styleStart = html.toLowerCase().lastIndexOf('<style');
+      const lastRuleEnd = html.lastIndexOf('}');
+      html = (lastRuleEnd > styleStart ? html.slice(0, lastRuleEnd + 1) : html) + '\n</style>';
+      truncated = true;
+    }
+    // A tag cut in the middle of its own name or attributes ("<p class=").
+    const danglingTag = html.match(/<[^<>]*$/);
+    if (danglingTag) {
+      html = html.slice(0, danglingTag.index).trimEnd();
+      truncated = true;
+    }
+    if (!/<\/html\s*>/i.test(html)) truncated = true;
+    if (truncated) {
+      notes.push('the page was cut short by the output limit — closed it; ask for a shorter page');
+    }
+
+    // The document skeleton, added around whatever is there.
+    if (!/<html\b/i.test(html)) html = `<html lang="en">\n${html}`;
+    if (!/<html\b[^>]*\blang\s*=/i.test(html)) html = html.replace(/<html\b/i, '<html lang="en"');
+    if (!/<head\b/i.test(html)) {
+      html = html.replace(/<html\b[^>]*>/i, (tag) => `${tag}\n<head>\n</head>`);
+      notes.push('added the missing <head>');
+    }
+    if (!/<\/head\s*>/i.test(html)) {
+      // An unclosed head ends where the body starts — or, with no body yet,
+      // at the end: everything written so far belongs to it.
+      html = /<body\b/i.test(html) ? html.replace(/<body\b/i, '</head>\n<body') : html + '\n</head>';
+    }
+    const headAdditions = [];
+    if (!/<meta\b[^>]*charset/i.test(html)) headAdditions.push('<meta charset="utf-8">');
+    if (!/<meta\b[^>]*name\s*=\s*["']?viewport/i.test(html)) {
+      headAdditions.push('<meta name="viewport" content="width=device-width, initial-scale=1">');
+    }
+    if (!/<title\b[^>]*>\s*[^<\s]/i.test(html)) {
+      html = html.replace(/<title\b[^>]*>\s*<\/title\s*>/i, '');
+      headAdditions.push(`<title>${E(projName)}</title>`);
+    }
+    if (headAdditions.length) {
+      html = html.replace(/<head\b[^>]*>/i, (tag) => `${tag}\n${headAdditions.join('\n')}`);
+      notes.push('completed the <head> (charset, viewport or title)');
+    }
+    if (!/<body\b/i.test(html)) {
+      html = html.replace(/<\/head\s*>/i, (tag) => `${tag}\n<body>`);
+      notes.push('added the missing <body>');
+    }
+    if (!/<\/body\s*>/i.test(html))
+      html = html.replace(/<\/html\s*>\s*$/i, '').trimEnd() + '\n</body>';
+    if (!/<\/html\s*>/i.test(html)) html += '\n</html>';
+    if (!/^\s*<!doctype html/i.test(html)) {
+      html = '<!doctype html>\n' + html;
+      notes.push('added the doctype');
+    }
+    return { html: html.trim() + '\n', notes };
   };
+
+  // ---- conversation ----
+
   // Completed exchanges only ({ user, assistant }): a failed or interrupted
   // generation is never recorded, so it cannot poison the next requests.
   let exchanges = [];
-  let lastHtml = '';
-  // History budget: every answer is a whole HTML page, which fills a small
-  // model's context window on its own. So the model gets the system prompt,
-  // the latest page in full, and only the user requests of the few exchanges
-  // before it (their pages are replaced by a one-line stub).
-  const MAX_EXCHANGES = 4;
-  const SUPERSEDED_PAGE = '(an earlier version of the page, replaced since)';
-  const buildMessages = (request) => {
-    const messages = [SYSTEM];
-    const recent = exchanges.slice(-MAX_EXCHANGES);
-    recent.forEach((exchange, index) => {
-      const isLatest = index === recent.length - 1;
-      messages.push({ role: 'user', content: exchange.user });
-      messages.push({ role: 'assistant', content: isLatest ? exchange.assistant : SUPERSEDED_PAGE });
-    });
+  // Every page generated in this session, oldest first: the last one is the
+  // current page, the others are what /undo goes back to.
+  const pages = [];
+  const currentPage = () => pages[pages.length - 1] || '';
+
+  // A page is the bulk of the exchange: half of the context window is reserved
+  // for writing it, the prompt gets the rest.
+  const ANSWER_SHARE = 0.5;
+  const MAX_EARLIER_REQUESTS = 4;
+  const PAGE_TOO_LONG =
+    '(the current page is too long to show here: write the new version in full from the requests)';
+
+  // The messages for a request, within `budget` characters: the system prompt,
+  // the earlier requests (the most recent ones that fit), the current page in
+  // full — or a note when it does not fit, a cut page being worse than none —
+  // and the new request.
+  const buildMessages = (request, budget) => {
+    let room = budget - SYSTEM_PROMPT.length - request.length;
+    const page = currentPage();
+    const pageText = page && page.length <= room * 0.7 ? '```html\n' + page + '```' : '';
+    room -= pageText.length || PAGE_TOO_LONG.length;
+
+    const earlier = [];
+    for (const exchange of exchanges.slice(-MAX_EARLIER_REQUESTS).reverse()) {
+      if (exchange.user.length > room) break;
+      earlier.unshift(exchange.user);
+      room -= exchange.user.length;
+    }
+
+    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+    if (earlier.length) {
+      // Earlier requests, each answered by a version of the page since replaced.
+      messages.push({ role: 'user', content: earlier.join('\n') });
+      messages.push({
+        role: 'assistant',
+        content: page ? pageText || PAGE_TOO_LONG : '(no page yet)',
+      });
+    }
     messages.push({ role: 'user', content: request });
     return messages;
   };
 
   // Ctrl+C interrupts a running generation.
   if (ctx.signal) {
-    ctx.signal.addEventListener(
-      'abort',
-      () => {
-        ctx.llm.interrupt();
-      },
-      { once: true },
-    );
+    ctx.signal.addEventListener('abort', () => ctx.llm.interrupt(), { once: true });
   }
+  const isAborted = () => Boolean(ctx.signal && ctx.signal.aborted);
 
-  while (true) {
-    if (ctx.signal && ctx.signal.aborted) break;
-    const raw = await ctx.ask('›');
-    const request = (raw || '').trim();
-    if (!request) continue;
-
-    ctx.append(
-      '<div class="ln"><span class="prompt">›</span> <span class="cmd">' +
-        E(request) +
-        '</span></div>',
-    );
-
-    // Slash commands are matched case-insensitively.
-    const command = request.toLowerCase();
-    if (command === '/exit' || command === '/quit' || command === '/bye') {
-      ctx.line('Right then, see you around! 🍷');
-      break;
-    }
-    if (command === '/help') {
-      ctx.line('/show [file]  view the result  ·  /save [file]  write the page  ·  /files  list');
-      ctx.line('/download  download the project as a .zip  ·  /project  show the project');
-      ctx.line('/reset  forget the context  ·  /model  ·  /exit');
-      continue;
-    }
-    if (command === '/model') {
-      ctx.line('model: ' + modelId);
-      continue;
-    }
-    if (command === '/project' || command === '/pwd') {
-      ctx.line('project "' + projName + '" — ' + projPath);
-      continue;
-    }
-    if (command === '/reset' || command === '/clear') {
-      exchanges = [];
-      ctx.line('context forgotten — starting afresh (the project stays).');
-      continue;
-    }
-    if (command === '/files' || command === '/ls') {
-      const listing = ctx.list(projPath);
-      if (listing && listing.error) ctx.error('glaude: ' + listing.error);
-      else {
-        const entries = (listing && listing.entries) || [];
-        ctx.line(
-          entries.length
-            ? entries.map((entry) => entry.name + (entry.type === 'dir' ? '/' : '')).join('  ')
-            : '(empty project)',
-        );
-      }
-      continue;
-    }
-    if (command === '/save' || command.startsWith('/save ')) {
-      if (!lastHtml) {
-        ctx.error('glaude: nothing to save — ask le Glaude for a page first.');
-        continue;
-      }
-      const file = fileName(request.replace(/^\/save\s*/i, ''), 'index.html');
-      const saveError = ctx.write(projPath + '/' + file, lastHtml);
-      if (saveError) ctx.error('glaude: ' + saveError);
-      else ctx.line('💾 saved: ' + projPath + '/' + file + ' (' + lastHtml.length + ' bytes)');
-      continue;
-    }
-    if (command === '/show' || command.startsWith('/show ')) {
-      const file = fileName(request.replace(/^\/show\s*/i, ''), 'index.html');
-      const filePath = projPath + '/' + file;
-      const stored = ctx.read(filePath);
-      let html = (stored && stored.content) || '';
-      // Nothing on disk yet but a page was just generated: save it on the way,
-      // so /show right after a generation simply works.
-      if ((!html || !html.trim()) && lastHtml) {
-        const saveError = ctx.write(filePath, lastHtml);
-        if (!saveError) {
-          html = lastHtml;
-          ctx.line('💾 (saved ' + file + ' along the way)');
-        }
-      }
-      if (!html || !html.trim()) {
-        ctx.error('glaude: ' + file + ' is empty — ask for a page, then try again.');
-        continue;
-      }
-      // A plausible address for the fake browser's URL bar (nothing is served).
-      const url = 'http://localhost/' + projName + (file === 'index.html' ? '' : '/' + file);
-      openBrowser(url, html);
-      ctx.line('🌐 browser opened on ' + url + ' (Esc or ✕ to close).');
-      continue;
-    }
-    if (command === '/download' || command === '/dl' || command === '/zip') {
-      const encoder = new TextEncoder();
-      const files = [];
-      // Collect every file of the project, recursively; archive paths start
-      // with the project name so the zip unpacks into its own folder.
-      const collectFiles = (absoluteDir, archiveDir) => {
-        const listing = ctx.list(absoluteDir);
-        if (!listing || listing.error || !listing.entries) return;
-        for (const entry of listing.entries) {
-          const absolutePath = absoluteDir + '/' + entry.name;
-          const archivePath = archiveDir + '/' + entry.name;
-          if (entry.type === 'dir') collectFiles(absolutePath, archivePath);
-          else {
-            const stored = ctx.read(absolutePath);
-            const content = stored && typeof stored.content === 'string' ? stored.content : '';
-            files.push({ name: archivePath, data: encoder.encode(content) });
-          }
-        }
-      };
-      collectFiles(projPath, projName);
-      if (!files.length) {
-        ctx.error('glaude: empty project — nothing to download.');
-        continue;
-      }
-      try {
-        const zip = buildZip(files);
-        const blobUrl = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
-        // A temporary link is the only way to name the downloaded file.
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = projName + '.zip';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        // Leave the browser time to start the download before freeing the blob.
-        const REVOKE_DELAY_MS = 4000;
-        setTimeout(() => URL.revokeObjectURL(blobUrl), REVOKE_DELAY_MS);
-        ctx.line('⬇️  ' + projName + '.zip downloaded — ' + files.length + ' file(s).');
-      } catch (e) {
-        ctx.error('glaude: zip failed — ' + (e.message || e.name));
-      }
-      continue;
-    }
-
-    // Stream the answer through the central module (tokens counted by the widget).
+  // Generates the page for a request: streams the answer, then runs it through
+  // the quality gate. The exchange and the page are only recorded when the
+  // generation completed.
+  const generate = async (request) => {
     const row = ctx.append(
       '<div class="ln out" style="white-space:pre-wrap"><span class="accent">le Glaude› </span><span class="reply comment">…</span></div>',
     );
@@ -857,9 +856,10 @@ js: |
     let streamed = ''; // what the model really wrote (never the "…" placeholder)
     let failed = false;
     try {
-      result = await ctx.llm.chat({
-        messages: buildMessages(request),
-        stream: true,
+      result = await ctx.llm.fit({
+        build: (budget) => buildMessages(request, budget),
+        answerShare: ANSWER_SHARE,
+        maxTokens: Infinity, // as much as the share allows: the page must be whole
         signal: ctx.signal,
         onToken: (delta, full) => {
           streamed = full;
@@ -870,41 +870,211 @@ js: |
       });
     } catch (e) {
       failed = true;
-      if (!(ctx.signal && ctx.signal.aborted))
-        ctx.error('glaude: generation failed — ' + (e.message || e.name));
+      if (!isAborted()) ctx.error('glaude: generation failed — ' + (e.message || e.name));
     }
 
-    const aborted = Boolean(ctx.signal && ctx.signal.aborted);
     const reply = (result && result.content) || streamed;
     if (!reply) replyEl.textContent = '(la Denrée ate the answer)';
-    // Only a complete exchange joins the history: after a failure or an
-    // interruption the request is forgotten along with its partial answer.
-    if (reply && !failed && !aborted) exchanges.push({ user: request, assistant: reply });
+    if (!reply || failed || isAborted()) return;
 
-    const pageHtml = extractHtml(reply);
-    if (pageHtml) {
-      lastHtml = pageHtml;
+    exchanges.push({ user: request, assistant: reply });
+    const rawPage = extractHtml(reply);
+    if (!rawPage) {
       ctx.append(
-        '<div class="ln comment">↳ HTML page detected (' +
-          pageHtml.length +
-          ' bytes) — /save to write it · /show to admire it.</div>',
+        '<div class="ln comment">↳ no HTML page in this answer — ask again for a page.</div>',
       );
+      return;
     }
-
+    const { html, notes } = finalizePage(rawPage);
+    pages.push(html);
+    ctx.append(
+      `<div class="ln comment">↳ HTML page ready (${byteLength(html)} bytes) — ` +
+        '/save to write it · /show to admire it.</div>',
+    );
+    for (const note of notes) {
+      ctx.append(`<div class="ln comment">  ⚠ ${E(note)}</div>`);
+    }
     if (result && result.usage && typeof result.usage.tokPerSec === 'number') {
+      const { completionTokens, tokPerSec } = result.usage;
       ctx.append(
-        '<div class="ln comment">' +
-          E(
-            result.usage.completionTokens +
-              ' tokens · ' +
-              result.usage.tokPerSec.toFixed(1) +
-              ' tok/s',
-          ) +
-          '</div>',
+        `<div class="ln comment">${E(`${completionTokens} tokens · ${tokPerSec.toFixed(1)} tok/s`)}</div>`,
       );
     }
+  };
 
-    if (ctx.signal && ctx.signal.aborted) break;
+  // ---- chat commands ----
+
+  const saveCurrentPage = (file) => {
+    const saveError = ctx.write(projPath + '/' + file, currentPage());
+    if (saveError) ctx.error('glaude: ' + saveError);
+    return !saveError;
+  };
+
+  const showPage = (argument) => {
+    const file = fileName(argument, 'index.html');
+    const filePath = projPath + '/' + file;
+    const stored = ctx.read(filePath);
+    let html = (stored && stored.content) || '';
+    // Nothing on disk yet but a page was just generated: save it on the way,
+    // so /show right after a generation simply works.
+    if (!html.trim() && currentPage() && saveCurrentPage(file)) {
+      html = currentPage();
+      ctx.line('💾 (saved ' + file + ' along the way)');
+    }
+    if (!html.trim()) {
+      ctx.error('glaude: ' + file + ' is empty — ask for a page, then try again.');
+      return;
+    }
+    // A plausible address for the fake browser's URL bar (nothing is served).
+    const url = 'http://localhost/' + projName + (file === 'index.html' ? '' : '/' + file);
+    openBrowser(url, html);
+    ctx.line('🌐 browser opened on ' + url + ' (Esc or ✕ to close).');
+  };
+
+  const downloadProject = () => {
+    const encoder = new TextEncoder();
+    const files = [];
+    // Collect every file of the project, recursively; archive paths start
+    // with the project name so the zip unpacks into its own folder.
+    const collectFiles = (absoluteDir, archiveDir) => {
+      const listing = ctx.list(absoluteDir);
+      if (!listing || listing.error || !listing.entries) return;
+      for (const entry of listing.entries) {
+        const absolutePath = absoluteDir + '/' + entry.name;
+        const archivePath = archiveDir + '/' + entry.name;
+        if (entry.type === 'dir') {
+          collectFiles(absolutePath, archivePath);
+          continue;
+        }
+        const stored = ctx.read(absolutePath);
+        const content = stored && typeof stored.content === 'string' ? stored.content : '';
+        files.push({ name: archivePath, data: encoder.encode(content) });
+      }
+    };
+    collectFiles(projPath, projName);
+    if (!files.length) {
+      ctx.error('glaude: empty project — nothing to download.');
+      return;
+    }
+    try {
+      const zip = buildZip(files);
+      const blobUrl = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+      // A temporary link is the only way to name the downloaded file.
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = projName + '.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Leave the browser time to start the download before freeing the blob.
+      const REVOKE_DELAY_MS = 4000;
+      setTimeout(() => URL.revokeObjectURL(blobUrl), REVOKE_DELAY_MS);
+      ctx.line('⬇️  ' + projName + '.zip downloaded — ' + files.length + ' file(s).');
+    } catch (e) {
+      ctx.error('glaude: zip failed — ' + (e.message || e.name));
+    }
+  };
+
+  // Returned by a command that ends the session.
+  const END_SESSION = Symbol('end of session');
+
+  // The slash commands, each with its names and what it does with the text
+  // typed after it. Matched on the first word, case-insensitively.
+  const CHAT_COMMANDS = [
+    {
+      names: ['/exit', '/quit', '/bye'],
+      run: () => {
+        ctx.line('Right then, see you around! 🍷');
+        return END_SESSION;
+      },
+    },
+    {
+      names: ['/help'],
+      run: () => {
+        ctx.line('/show [file]  view the result  ·  /save [file]  write the page  ·  /files  list');
+        ctx.line('/undo  back to the previous page  ·  /download  the project as a .zip');
+        ctx.line('/project  show the project  ·  /reset  forget the context  ·  /model  ·  /exit');
+      },
+    },
+    { names: ['/model'], run: () => ctx.line('model: ' + modelId) },
+    {
+      names: ['/project', '/pwd'],
+      run: () => ctx.line('project "' + projName + '" — ' + projPath),
+    },
+    {
+      names: ['/reset', '/clear'],
+      run: () => {
+        exchanges = [];
+        pages.length = 0;
+        ctx.line('context forgotten — starting afresh (the project stays).');
+      },
+    },
+    {
+      names: ['/undo'],
+      run: () => {
+        if (pages.length < 2) {
+          ctx.error('glaude: no earlier page to go back to.');
+          return;
+        }
+        pages.pop();
+        // The request that produced the dropped page goes with it.
+        exchanges.pop();
+        ctx.line(
+          `↩ back to the previous page (${byteLength(currentPage())} bytes) — /show or /save it.`,
+        );
+      },
+    },
+    {
+      names: ['/files', '/ls'],
+      run: () => {
+        const listing = ctx.list(projPath);
+        if (listing && listing.error) {
+          ctx.error('glaude: ' + listing.error);
+          return;
+        }
+        const entries = (listing && listing.entries) || [];
+        const names = entries.map((entry) => entry.name + (entry.type === 'dir' ? '/' : ''));
+        ctx.line(names.length ? names.join('  ') : '(empty project)');
+      },
+    },
+    {
+      names: ['/save'],
+      run: (argument) => {
+        if (!currentPage()) {
+          ctx.error('glaude: nothing to save — ask le Glaude for a page first.');
+          return;
+        }
+        const file = fileName(argument, 'index.html');
+        if (!saveCurrentPage(file)) return;
+        ctx.line(`💾 saved: ${projPath}/${file} (${byteLength(currentPage())} bytes)`);
+      },
+    },
+    { names: ['/show'], run: showPage },
+    { names: ['/download', '/dl', '/zip'], run: downloadProject },
+  ];
+
+  while (!isAborted()) {
+    const request = ((await ctx.ask('›')) || '').trim();
+    if (!request) continue;
+
+    ctx.append(
+      '<div class="ln"><span class="prompt">›</span> <span class="cmd">' +
+        E(request) +
+        '</span></div>',
+    );
+
+    if (request.startsWith('/')) {
+      const [word, ...rest] = request.split(/\s+/);
+      const chatCommand = CHAT_COMMANDS.find((entry) => entry.names.includes(word.toLowerCase()));
+      if (!chatCommand) {
+        ctx.error(`glaude: unknown command ${word} — /help lists them.`);
+        continue;
+      }
+      if (chatCommand.run(rest.join(' ')) === END_SESSION) break;
+      continue;
+    }
+
+    await generate(request);
   }
 
   ctx.line('glaude: session closed (the model stays warm — `llm --unload` to free it).');

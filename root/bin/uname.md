@@ -1,6 +1,7 @@
 ---
 name: uname
 desc: system
+agent: read
 index: false
 man: |
   # UNAME(1)

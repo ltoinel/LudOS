@@ -1,6 +1,7 @@
 ---
 name: date
 desc: date and time
+agent: read
 index: false
 man: |
   # DATE(1)

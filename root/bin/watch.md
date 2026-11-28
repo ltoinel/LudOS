@@ -1,6 +1,7 @@
 ---
 name: watch
 desc: re-run a command every few seconds — e.g. watch -n 5 date
+agent: no
 index: false
 man: |
   # WATCH(1)

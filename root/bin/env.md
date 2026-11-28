@@ -1,6 +1,7 @@
 ---
 name: env
 desc: print the shell environment — e.g. env, env HOME
+agent: read
 page: false
 man: |
   # ENV(1)

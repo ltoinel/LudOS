@@ -1,6 +1,7 @@
 ---
 name: wc
 desc: count lines, words and bytes — e.g. wc about.md, ls | wc -l
+agent: read
 seo_title: Word counter — count words, lines & characters
 demo: wc about.md projects.md contact.md
 man: |

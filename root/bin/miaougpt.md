@@ -1,6 +1,7 @@
 ---
 name: miaougpt
 desc: chat with a local AI cat (WebGPU, fully in-browser) — e.g. miaougpt
+agent: no
 alias: chat
 seo_title: Local AI chat in your browser — WebGPU LLM, no server
 man: |

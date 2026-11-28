@@ -1,6 +1,7 @@
 ---
 name: xxd
 desc: hex dump of a file or piped text — e.g. xxd about.md, echo hello | xxd
+agent: read
 alias: hexdump
 demo: xxd -l 96 about.md
 seo_title: Hex dump online — xxd hex viewer in your browser

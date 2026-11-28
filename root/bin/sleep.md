@@ -1,6 +1,7 @@
 ---
 name: sleep
 desc: wait for a while — e.g. sleep 2, sleep 1.5m
+agent: no
 index: false
 man: |
   # SLEEP(1)

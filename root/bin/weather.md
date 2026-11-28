@@ -1,6 +1,7 @@
 ---
 name: weather
 desc: current weather — e.g. weather, weather Tokyo
+agent: network
 demo: weather
 seo_title: Current weather for your location or any city
 man: |

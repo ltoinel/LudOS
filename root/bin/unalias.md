@@ -1,6 +1,7 @@
 ---
 name: unalias
 desc: remove a command shortcut — e.g. unalias la
+agent: no
 page: false
 man: |
   # UNALIAS(1)

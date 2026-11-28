@@ -1,6 +1,7 @@
 ---
 name: bell
 desc: toggle the Tab-completion bell (on|off)
+agent: no
 index: false
 man: |
   # BELL(1)

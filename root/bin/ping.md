@@ -1,6 +1,7 @@
 ---
 name: ping
 desc: HTTP ping a host — e.g. ping toinel.com
+agent: no
 demo: ping %HOST%
 seo_title: Online ping — HTTP latency test from your browser
 man: |

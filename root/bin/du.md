@@ -1,6 +1,7 @@
 ---
 name: du
 desc: disk usage of files and directories — e.g. du -h, du -sh ~, du -a /etc
+agent: read
 index: false
 man: |
   # DU(1)

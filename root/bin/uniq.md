@@ -1,6 +1,7 @@
 ---
 name: uniq
 desc: drop repeated adjacent lines — e.g. sort names.txt | uniq -c
+agent: read
 page: false
 man: |
   # UNIQ(1)

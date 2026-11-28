@@ -1,6 +1,7 @@
 ---
 name: md5sum
 desc: compute an MD5 checksum — e.g. md5 hello
+agent: read
 alias: md5
 demo: md5sum hello
 seo_title: MD5 hash generator — online md5sum checksum
@@ -42,7 +43,7 @@ man: |
   md5sum The quick brown fox
 
   ## SEE ALSO
-  sha256sum, hashcat, base64
+  sha256sum, hashcat, base64, xxd
 js: |
   const input = ctx.args.join(' ');
   if (!input) {

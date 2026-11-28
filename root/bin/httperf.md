@@ -1,6 +1,7 @@
 ---
 name: httperf
 desc: HTTP performance benchmark — e.g. httperf -n 20 -c 4 toinel.com
+agent: no
 man: |
   # HTTPERF(1)
 

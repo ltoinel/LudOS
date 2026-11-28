@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseCommand, validateCommands } from '../src/lib/commands.ts';
 
 /** Helper: a minimal valid command file. */
-const cmd = (fm: string, body = '') => `---\n${fm}\n---\n${body}`;
+const cmd = (fm: string, body = '') =>
+  `---\n${/^agent:/m.test(fm) || fm === '' ? fm : `${fm}\nagent: read`}\n---\n${body}`;
 
 describe('parseCommand', () => {
   it('extracts name, desc and a js block', () => {
@@ -34,6 +35,19 @@ describe('validateCommands', () => {
     ]);
     expect(errors).toEqual([]);
     expect(defs.map((d) => d.name).sort()).toEqual(['hello', 'whoami']);
+  });
+
+  it('requires every command to say what the AI agent may do with it', () => {
+    const raw = (agent: string) => `---\nname: x\n${agent}---\nbody`;
+    expect(validateCommands([['x.md', raw('')]]).errors[0]).toContain(
+      '"agent" must be read, network or no',
+    );
+    expect(validateCommands([['x.md', raw('agent: maybe\n')]]).errors[0]).toContain('got "maybe"');
+    for (const access of ['read', 'network', 'no']) {
+      const { defs, errors } = validateCommands([['x.md', raw(`agent: ${access}\n`)]]);
+      expect(errors).toEqual([]);
+      expect(defs[0].agent).toBe(access);
+    }
   });
 
   it('flags a missing name', () => {

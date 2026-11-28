@@ -1,6 +1,7 @@
 ---
 name: color
 desc: convert a colour between hex, rgb, hsl and names — e.g. color #ff8800, color tomato
+agent: read
 alias: colour
 demo: color #ff8800
 seo_title: Color converter — hex, RGB, HSL & WCAG contrast

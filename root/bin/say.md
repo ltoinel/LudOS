@@ -1,6 +1,7 @@
 ---
 name: say
 desc: speak text aloud (speech synthesis) — e.g. say bonjour, say -l en hello
+agent: no
 alias: tts
 page: false
 man: |

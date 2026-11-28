@@ -1,6 +1,7 @@
 ---
 name: sudo
 desc: attempt to elevate privileges
+agent: no
 index: false
 man: |
   # SUDO(1)

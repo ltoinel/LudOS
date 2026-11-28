@@ -1,6 +1,7 @@
 ---
 name: todo
 desc: lightweight task manager — e.g. todo add "finish the project", todo ls
+agent: no
 alias: task
 seo_title: Simple to-do list in your browser — no account, command line
 man: |

@@ -1,6 +1,7 @@
 ---
 name: regex
 desc: test a regular expression — e.g. regex "(\d+)-(\d+)" "call 555-0199 now"
+agent: read
 demo: regex "(?<year>\d{4})-(?<month>\d{2})" i "Released 2026-11, patched 2027-02"
 seo_title: Regex tester — test a regular expression online
 man: |

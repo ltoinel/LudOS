@@ -1,6 +1,7 @@
 ---
 name: dig
 desc: detailed DNS lookup — e.g. dig example.com MX, dig example.com +short
+agent: network
 demo: dig %HOST%
 seo_title: dig online — DNS records with TTL (A, MX, TXT, CAA…)
 man: |

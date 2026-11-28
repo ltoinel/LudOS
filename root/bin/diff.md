@@ -1,6 +1,7 @@
 ---
 name: diff
 desc: compare two files line by line — e.g. diff notes.txt notes.bak
+agent: read
 page: false
 man: |
   # DIFF(1)
