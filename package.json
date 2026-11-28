@@ -38,9 +38,9 @@
     "postbuild": "node scripts/keep-assets.ts restore"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.0",
-    "@mlc-ai/web-llm": "^0.2.85",
-    "@tailwindcss/vite": "^4.1.0",
+    "@iconify-json/lucide": "^1.2.159",
+    "@mlc-ai/web-llm": "^0.2.89",
+    "@tailwindcss/vite": "^4.3.5",
     "astro": "^7.4.13",
     "astro-icon": "^1.2.0",
     "tailwindcss": "^4.1.0"
@@ -52,9 +52,9 @@
     "@vitest/coverage-v8": "^5.1.2",
     "eslint": "^10.4.1",
     "eslint-plugin-astro": "^3.2.2",
-    "globals": "^17.6.0",
+    "globals": "^17.14.0",
     "npm-check-updates": "^17.1.0",
-    "prettier": "^3.8.3",
+    "prettier": "^3.10.1",
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.60.1",
