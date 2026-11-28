@@ -21,7 +21,7 @@
  * Installed `@mlc-ai/web-llm` version, shown by `llm` and the widget. Kept in
  * sync with package.json by `tests/llm.test.ts`.
  */
-export const WEBLLM_VERSION = '0.2.85';
+export const WEBLLM_VERSION = '0.2.89';
 
 /** A curated, browser-friendly chat model. `base` is the id up to the quant suffix. */
 export interface RecModel {
